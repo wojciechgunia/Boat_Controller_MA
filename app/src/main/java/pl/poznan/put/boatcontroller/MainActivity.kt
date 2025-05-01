@@ -311,9 +311,14 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
                         }
                     },
                     enabled = !isLoading,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .height(60.dp),
+                    shape = RoundedCornerShape(10.dp),
                 ) {
-                    Text(if (isLoading) "Connecting..." else "Connect")
+                    Text(if (isLoading) "Connecting..." else "Connect",
+                        fontSize = 6.em)
                 }
             }
         }
