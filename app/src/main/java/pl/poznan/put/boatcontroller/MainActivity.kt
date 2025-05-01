@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -44,9 +46,21 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.HttpURLConnection
+import java.net.Socket
+import java.net.URL
 
 class MainActivity : ComponentActivity() {
+    private val mainVm by viewModels<MainViewModel>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
@@ -55,7 +69,7 @@ class MainActivity : ComponentActivity() {
             BoatControllerTheme {
                 BoatControllerTopBar {
                     val navController = rememberNavController()
-                    AppNavHost(navController)
+                    AppNavHost(navController, mainVm)
                 }
             }
         }
@@ -63,15 +77,15 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppNavHost(navController: NavHostController) {
+fun AppNavHost(navController: NavHostController, mainVm: MainViewModel) {
     NavHost(navController, startDestination = "home") {
-        composable("home") { HomeContent(navController) }
-        composable("connection") { ConnectionContent(navController) }
+        composable("home") { HomeContent(navController, mainVm) }
+        composable("connection") { ConnectionContent(navController, mainVm) }
     }
 }
 
 @Composable
-fun HomeContent(navController: NavController) {
+fun HomeContent(navController: NavController, mainVm: MainViewModel) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -82,28 +96,58 @@ fun HomeContent(navController: NavController) {
         ) {
             Row {
                 Text(text = "Connection:  ", fontSize = 5.em)
-                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                if (mainVm.isLoggedIn) {
+                    Text(text = "Connected", fontSize = 5.em, color = Color.Green)
+                } else {
+                    Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                }
             }
             Spacer(modifier = Modifier.height(24.dp))
 
-            MenuButton("Connection", R.drawable.bc_connect, navController, navDest = "connection")
-            MenuButton("Controller", R.drawable.bc_controller, navController, false)
-            MenuButton("VR Cam", R.drawable.bc_vr, navController, false)
-            MenuButton("Waypoint", R.drawable.bc_waypoint, navController, false)
+            if (mainVm.isLoggedIn) {
+                MenuButton(
+                    "Disconnect",
+                    R.drawable.bc_disconnect,
+                    navController,
+                    navDest = "disconnect",
+                    mainVm = mainVm
+                )
+            } else {
+                MenuButton(
+                    "Connection",
+                    R.drawable.bc_connect,
+                    navController,
+                    navDest = "connection",
+                )
+            }
+
+            MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn)
+            MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
+            MenuButton("Waypoint", R.drawable.bc_waypoint, navController, mainVm.isLoggedIn)
         }
     }
 }
 
 @Composable
-fun MenuButton(text: String,
-               icon: Int,
-               navController: NavController,
-               enabled: Boolean = true,
-               navDest: String? = null) {
+fun MenuButton(
+    text: String,
+    icon: Int,
+    navController: NavController,
+    enabled: Boolean = true,
+    navDest: String? = null,
+    mainVm: MainViewModel? = null
+) {
     Button(
         onClick = {
-            if(navDest != null)
+            if (navDest != null && navDest != "disconnect") {
                 navController.navigate(navDest)
+            } else if (navDest != null) {
+                if (mainVm != null) {
+                    mainVm.socketClose()
+                    mainVm.updateLoggedIn(false)
+                }
+            }
+
         },
         modifier = Modifier
             .fillMaxWidth()
@@ -123,19 +167,19 @@ fun MenuButton(text: String,
 }
 
 @Composable
-fun ConnectionContent(navController: NavController) {
-    ConnectionForm(navController)
+fun ConnectionContent(navController: NavController, mainVm: MainViewModel) {
+    ConnectionForm(navController, mainVm)
 }
 
 @Composable
-fun ConnectionForm(navController: NavController) {
-    var serverIp by remember { mutableStateOf("") }
-    var serverPort by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-
+fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
     var usernameError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
+
+    var serverIp = mainVm.serverIp
+    var serverPort = mainVm.serverPort
+    var username = mainVm.username
+    var password = mainVm.password
 
     var showDialog by remember { mutableStateOf(false) }
 
@@ -177,7 +221,7 @@ fun ConnectionForm(navController: NavController) {
                 // Server IP
                 OutlinedTextField(
                     value = serverIp,
-                    onValueChange = { serverIp = it },
+                    onValueChange = { mainVm.updateServerIP(it) },
                     label = { Text("Server IP") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -187,7 +231,7 @@ fun ConnectionForm(navController: NavController) {
                 // Server Port
                 OutlinedTextField(
                     value = serverPort,
-                    onValueChange = { serverPort = it },
+                    onValueChange = { mainVm.updateServerPort(it) },
                     label = { Text("Server Port") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
@@ -199,7 +243,7 @@ fun ConnectionForm(navController: NavController) {
                 OutlinedTextField(
                     value = username,
                     onValueChange = {
-                        username = it
+                        mainVm.updateUsername(it)
                         usernameError = validateUsername(it)
                     },
                     label = { Text("Username") },
@@ -221,7 +265,7 @@ fun ConnectionForm(navController: NavController) {
                 OutlinedTextField(
                     value = password,
                     onValueChange = {
-                        password = it
+                        mainVm.updatePassword(it)
                         passwordError = validatePassword(it)
                     },
                     label = { Text("Password") },
@@ -240,31 +284,46 @@ fun ConnectionForm(navController: NavController) {
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Connect Button
+                var isLoading by remember { mutableStateOf(false) }
+
                 Button(
                     onClick = {
-                        usernameError = validateUsername(username)
-                        passwordError = validatePassword(password)
+                        usernameError = validateUsername(mainVm.username)
+                        passwordError = validatePassword(mainVm.password)
 
                         if (usernameError == null && passwordError == null) {
-                            // Tu można spróbować połączenia np. przez coroutine
-                            // Zamiast tego pokażemy błąd
-                            showDialog = true
+                            isLoading = true
+                            // wysyłka danych do serwera
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val result =
+                                    loginToServer(mainVm, serverIp, serverPort, username, password)
+                                withContext(Dispatchers.Main) {
+                                    isLoading = false
+//                                    println(result)
+                                    mainVm.updateLoggedIn(result)
+                                    if (result == false) {
+                                        showDialog = true
+                                    } else {
+                                        navController.navigate("home")
+                                    }
+                                }
+                            }
                         }
                     },
+                    enabled = !isLoading,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Connect")
+                    Text(if (isLoading) "Connecting..." else "Connect")
                 }
             }
         }
     }
 
-    // AlertDialog
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("Błąd") },
-            text = { Text("Połączenie nie powiodło się") },
+            title = { Text("Błąd logowania") },
+            text = { Text("Połączenie nie powiodło się lub dostęp został odrzucony.") },
             confirmButton = {
                 Button(onClick = { showDialog = false }) {
                     Text("Close")
@@ -288,6 +347,38 @@ fun validatePassword(password: String): String? {
     return if (!regex.matches(password)) {
         "Hasło musi mieć min. 8 znaków, w tym małą, wielką literę i cyfrę (max. 40 znaków)"
     } else null
+}
+
+suspend fun loginToServer(
+    mainVm: MainViewModel,
+    ip: String,
+    port: String,
+    username: String,
+    password: String
+): Boolean {
+    return try {
+        val socket = Socket(ip, port.toInt())
+
+        val output = PrintWriter(socket.getOutputStream(), true)
+        val input = BufferedReader(InputStreamReader(socket.getInputStream()))
+
+        val message = "Login;$username;$password"
+        output.println(message)
+
+        val response = input.readLine()
+
+        if (response?.trim() == "Permission granted") {
+            mainVm.updateSocket(socket)
+        }
+        when (response?.trim()) {
+            "Permission granted" -> true
+            "Permission denied" -> false
+            else -> false
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
 }
 
 
