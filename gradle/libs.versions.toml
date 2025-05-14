@@ -1,6 +1,6 @@
 [versions]
 activityComposeVersion = "1.8.2"
-agp = "8.9.2"
+agp = "8.10.0"
 androidxGraphicsShapes = "1.0.1"
 kotlin = "2.0.21"
 coreKtx = "1.15.0"

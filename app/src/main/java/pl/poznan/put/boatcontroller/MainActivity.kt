@@ -1,11 +1,11 @@
 package pl.poznan.put.boatcontroller
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +37,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -54,9 +54,7 @@ import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
-import java.net.HttpURLConnection
 import java.net.Socket
-import java.net.URL
 
 class MainActivity : ComponentActivity() {
     private val mainVm by viewModels<MainViewModel>()
@@ -121,7 +119,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                 )
             }
 
-            MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn)
+            MenuButton("Controller", R.drawable.bc_controller, navController, navDest = "controller")
             MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
             MenuButton("Waypoint", R.drawable.bc_waypoint, navController, mainVm.isLoggedIn)
         }
@@ -137,15 +135,18 @@ fun MenuButton(
     navDest: String? = null,
     mainVm: MainViewModel? = null
 ) {
+    val context = LocalContext.current
     Button(
         onClick = {
-            if (navDest != null && navDest != "disconnect") {
+            if (navDest != null && navDest == "connection") {
                 navController.navigate(navDest)
-            } else if (navDest != null) {
+            } else if (navDest != null && navDest == "disconnect") {
                 if (mainVm != null) {
                     mainVm.socketClose()
                     mainVm.updateLoggedIn(false)
                 }
+            } else if (navDest != null && navDest == "controller") {
+                context.startActivity(Intent(context, ControllerActivity::class.java), null)
             }
 
         },
