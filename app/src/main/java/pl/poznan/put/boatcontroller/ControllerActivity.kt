@@ -5,19 +5,34 @@ import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,28 +42,52 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
+import kotlin.getValue
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import coil3.compose.AsyncImage
+import org.maplibre.android.MapLibre
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.PropertyFactory.backgroundColor
 
 class ControllerActivity: ComponentActivity() {
 
+    private val viewModel by viewModels<ControllerViewModel>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             val colorScheme = MaterialTheme.colorScheme
             if (!isLandscape()) {
-                RotatePhoneTutorialAnimation(colorScheme)
+                RotatePhoneAnimation(colorScheme)
+            } else {
+                EngineControlScreen(viewModel)
             }
         }
     }
@@ -59,9 +98,10 @@ class ControllerActivity: ComponentActivity() {
         return configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
 
+    // ===========================  Rotation screen ================================================
     @SuppressLint("UseCompatLoadingForDrawables", "AutoboxingStateCreation")
     @Composable
-    fun RotatePhoneTutorialAnimation(colorScheme: ColorScheme) {
+    fun RotatePhoneAnimation(colorScheme: ColorScheme) {
 
         var sweepAngle by remember { mutableFloatStateOf(0f) }
 
@@ -166,6 +206,279 @@ class ControllerActivity: ComponentActivity() {
             }
         }
     }
+
+    // ===========================  Controller screen ================================================
+
+    @Composable
+    fun EngineControlScreen(viewModel: ControllerViewModel) {
+        val tabs = listOf("Mapa", "Sonar", "Czujniki", "Kamera")
+
+        Row(modifier = Modifier.fillMaxSize()) {
+            PowerSlider(
+                value = viewModel.leftEnginePower,
+                onValueChange = { viewModel.leftEnginePower = it },
+                modifier = Modifier.weight(1f)
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(3f)
+                    .fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                TabRow(selectedTabIndex = viewModel.selectedTab) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = viewModel.selectedTab == index,
+                            onClick = { viewModel.selectedTab = index },
+                            text = { Text(title) }
+                        )
+                    }
+                }
+
+                when (viewModel.selectedTab) {
+                    0 -> MapTab(viewModel.shipPosition)
+                    1 -> SonarTab(viewModel.sonarData)
+                    2 -> SensorsTab(viewModel.sensorsData)
+                    3 -> CameraTab(viewModel.cameraFeedUrl)
+                }
+            }
+
+            PowerSlider(
+                value = viewModel.rightEnginePower,
+                onValueChange = { viewModel.rightEnginePower = it },
+                modifier = Modifier.weight(1f),
+                rightSide = true
+            )
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun PowerSlider(
+        value: Int,
+        onValueChange: (Int) -> Unit,
+        modifier: Modifier = Modifier,
+        rightSide: Boolean = false,
+        minValue: Int = -80,
+        maxValue: Int = 80
+    ) {
+        val range = maxValue - minValue
+        val steps = range / 10
+        val sliderHeight = 400.dp
+        val trackWidth = 40.dp
+        val thumbHeight = 30.dp
+
+        Box(
+            modifier = modifier
+                .width(120.dp)
+                .height(sliderHeight + 40.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val density = LocalDensity.current
+
+            Box(modifier = Modifier
+                .width(trackWidth)
+                .height(sliderHeight)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val segmentHeight = size.height / steps
+                    for (i in 0..steps) {
+                        val segValue = maxValue - i * 10
+                        val top = i * segmentHeight
+
+                        val color2 = when {
+                            segValue > 60 || segValue <= -60 -> Color.Red
+                            segValue in 41..60 || segValue in -60..-39 -> Color.Yellow
+                            segValue in 21..40 || segValue in -39..-19 -> Color.Green
+                            else -> Color.LightGray
+                        }
+
+                        drawRect(
+                            color = color2,
+                            topLeft = Offset(0f, top),
+                            size = Size(size.width, segmentHeight)
+                        )
+
+                        drawLine(
+                            color = Color.Black,
+                            start = Offset(0f, top),
+                            end = Offset(20f, top),
+                            strokeWidth = 5f
+                        )
+
+                        drawLine(
+                            color = Color.Black,
+                            start = Offset(size.width - 20f, top),
+                            end = Offset(size.width, top),
+                            strokeWidth = 5f
+                        )
+
+                        drawContext.canvas.nativeCanvas.apply {
+                            drawText(
+                                if (segValue in -75..70) "$segValue" else "",
+                                size.width - 25.dp.toPx(),
+                                top + 3.dp.toPx(),
+                                android.graphics.Paint().apply {
+                                    color = android.graphics.Color.BLACK;
+                                    textSize = 24f;
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            val sliderOffset = remember(value) {
+                val fraction = value.toFloat()/maxValue
+                fraction
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = if (rightSide) -120 else 120,
+                            y = with(density) {
+                                (-sliderOffset * ((sliderHeight.toPx()/2) - 80)).toInt()
+                            }
+                        )
+                    }
+                    .width(trackWidth)
+                    .height(thumbHeight),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .offset(x = if (rightSide) 40.dp else (-40).dp)
+                        .width(50.dp)
+                        .height(20.dp)
+                        .background(Color.Black, RoundedCornerShape(4.dp))
+                        .border(1.dp, Color.White, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {}
+                Box(
+                    modifier = Modifier
+                        .width(50.dp)
+                        .height(thumbHeight)
+                        .background(Color.Black, RoundedCornerShape(4.dp))
+                        .border(1.dp, Color.White, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "$value",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+
+            Slider(
+                value = value.toFloat(),
+                onValueChange = { onValueChange(it.toInt()) },
+                valueRange = minValue.toFloat()..maxValue.toFloat(),
+                steps = range/5 - 1,
+                modifier = Modifier
+                    .height(sliderHeight * 4)
+                    .rotate(-90f)
+                    .alpha(0f)
+            )
+        }
+    }
+
+
+    @SuppressLint("InflateParams")
+    @Composable
+    fun MapTab(shipPosition: DoubleArray, modifier: Modifier = Modifier) {
+        val context = LocalContext.current
+        AndroidView(
+            factory = {
+                MapLibre.getInstance(context)
+                MapView(context).apply {
+
+                    getMapAsync { mapboxMap ->
+                        val styleJson = """
+                        {
+                          "version": 8,
+                          "sources": {
+                            "osm": {
+                              "type": "raster",
+                              "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                              "tileSize": 256
+                            },
+                            "point-source": {
+                              "type": "geojson",
+                              "data": {
+                                "type": "FeatureCollection",
+                                "features": [
+                                  {
+                                    "type": "Feature",
+                                    "geometry": {
+                                      "type": "Point",
+                                      "coordinates": [${shipPosition[0]}, ${shipPosition[1]}]
+                                    },
+                                    "properties": {
+                                      "title": "Poznań"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "layers": [
+                            {
+                              "id": "osm-layer",
+                              "type": "raster",
+                              "source": "osm"
+                            },
+                            {
+                              "id": "point-layer",
+                              "type": "symbol",
+                              "source": "point-source",
+                              "layout": {
+                                "icon-image": "marker-icon",
+                                "icon-size": 1.0,
+                                "icon-allow-overlap": true
+                              }
+                            }
+                          ]
+                        }
+                    """.trimIndent()
+                        mapboxMap.setStyle(Style.Builder().fromJson(styleJson))
+                    }
+                }
+            },
+            modifier = modifier.fillMaxSize()
+        )
+    }
+
+    @Composable
+    fun SonarTab(data: String) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(text = data, fontSize = 24.sp)
+        }
+    }
+
+    @Composable
+    fun SensorsTab(data: String) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(text = data, fontSize = 20.sp)
+        }
+    }
+
+    @Composable
+    fun CameraTab(feedUrl: String) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = feedUrl,
+                contentDescription = "Podgląd z kamery",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+    }
+
 
 
     @Preview(showBackground = true)

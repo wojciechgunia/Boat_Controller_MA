@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name" translatable="false">Boat Controller</string>
+    <string name="mapbox_access_token"></string>
 </resources>
