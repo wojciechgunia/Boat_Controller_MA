@@ -12,9 +12,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     var rightEnginePower by mutableIntStateOf(0)
     var selectedTab by mutableIntStateOf(0)
 
-    val shipPosition = doubleArrayOf(52.404633, 16.957722)
+    val shipPosition = doubleArrayOf(52.404846, 16.959285)
     val sonarData = "Głębokość: 30m"
     val sensorsData = "Temperatura: 25°C\nWilgotność: 45%"
-    val cameraFeedUrl = "https://example.com/camera_feed.jpg"
+    val cameraFeedUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Malta_Trybuny_Pozna%C5%84_RB1.JPG/960px-Malta_Trybuny_Pozna%C5%84_RB1.JPG"
 
 }
