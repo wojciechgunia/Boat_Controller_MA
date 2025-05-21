@@ -1,5 +1,6 @@
 package pl.poznan.put.boatcontroller
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +39,7 @@ import androidx.navigation.compose.NavHost
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -123,7 +125,13 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
 
             MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn)
             MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
-            MenuButton("Waypoint", R.drawable.bc_waypoint, navController, mainVm.isLoggedIn)
+            MenuButton(
+                "Waypoint",
+                R.drawable.bc_waypoint,
+                navController,
+//                mainVm.isLoggedIn,
+                navDest = "waypoint",
+            )
         }
     }
 }
@@ -137,17 +145,19 @@ fun MenuButton(
     navDest: String? = null,
     mainVm: MainViewModel? = null
 ) {
+    val context = LocalContext.current
     Button(
         onClick = {
-            if (navDest != null && navDest != "disconnect") {
+            if (navDest != null && navDest == "connection") {
                 navController.navigate(navDest)
-            } else if (navDest != null) {
+            } else if (navDest != null && navDest == "disconnect") {
                 if (mainVm != null) {
                     mainVm.socketClose()
                     mainVm.updateLoggedIn(false)
                 }
+            } else if (navDest != null && navDest == "waypoint") {
+                context.startActivity(Intent(context, WaypointActivity::class.java), null)
             }
-
         },
         modifier = Modifier
             .fillMaxWidth()
