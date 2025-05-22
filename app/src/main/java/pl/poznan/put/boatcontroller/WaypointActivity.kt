@@ -36,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,9 +66,7 @@ import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.templates.RotatePhoneTutorialAnimation
 import androidx.core.graphics.createBitmap
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -81,7 +80,6 @@ import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 
-import org.maplibre.geojson.LineString
 import pl.poznan.put.boatcontroller.enums.FlagMode
 
 class WaypointActivity : ComponentActivity() {
@@ -128,7 +126,7 @@ class WaypointActivity : ComponentActivity() {
     @Composable
     fun MapTab(waypointVm: WaypointViewModel, modifier: Modifier = Modifier) {
         val context = LocalContext.current
-        val waypointScaling = 0.4f
+        val waypointScaling = 0.45f
 
         AndroidView(
             factory = {
@@ -211,7 +209,8 @@ class WaypointActivity : ComponentActivity() {
 
                             val linesSource = GeoJsonSource(
                                 "lines-source",
-                                FeatureCollection.fromFeatures(emptyArray()))
+                                FeatureCollection.fromFeatures(emptyArray())
+                            )
                             style.addSource(linesSource)
 
                             val lineLayer = LineLayer("lines-layer", "lines-source")
@@ -250,25 +249,14 @@ class WaypointActivity : ComponentActivity() {
                                             context,
                                             newWaypoint.id.toString()
                                         )
+                                        waypointVm.setFlagBitmap(newWaypoint.id, combinedBitmap)
+
                                         style.addImage(
                                             "flag-icon-${newWaypoint.id}",
                                             combinedBitmap
                                         )
 
-                                        val features = waypointVm.waypointPositions.map {
-                                            Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat))
-                                                .apply {
-                                                    addStringProperty("id", it.id.toString())
-                                                    addStringProperty("icon", "flag-icon-${it.id}")
-                                                }
-                                        }
-                                        flagsSource.setGeoJson(
-                                            FeatureCollection.fromFeatures(
-                                                features
-                                            )
-                                        )
-                                        updateConnectionLines(waypointVm, linesSource)
-                                        waypointVm.setFlagEditMode(null)
+                                        waypointVm.updateMapSources(flagsSource, linesSource)
                                         true
                                     }
 
@@ -288,40 +276,16 @@ class WaypointActivity : ComponentActivity() {
 
                                             if (id != null) {
                                                 waypointVm.removeWaypoint(id)
-                                                waypointVm.reindexWaypoints()
 
-                                                waypointVm.waypointPositions.forEach {
-                                                    val bitmap = createFlagWithCircleTextBitmap(context, it.id.toString())
-                                                    style.addImage("flag-icon-${it.id}", bitmap)
-                                                }
-
-                                                val updatedFeatures =
-                                                    waypointVm.waypointPositions.map {
-                                                        Feature.fromGeometry(
-                                                            Point.fromLngLat(
-                                                                it.lon,
-                                                                it.lat
-                                                            )
-                                                        ).apply {
-                                                            addStringProperty(
-                                                                "id",
-                                                                it.id.toString()
-                                                            )
-                                                            addStringProperty(
-                                                                "icon",
-                                                                "flag-icon-${it.id}"
-                                                            )
-                                                        }
-                                                    }
-
-                                                flagsSource.setGeoJson(
-                                                    FeatureCollection.fromFeatures(
-                                                        updatedFeatures
+                                                waypointVm.flagBitmaps.forEach { (id, bitmap) ->
+                                                    style.addImage(
+                                                        "flag-icon-$id",
+                                                        bitmap
                                                     )
-                                                )
+                                                }
                                             }
-                                            updateConnectionLines(waypointVm, linesSource)
-                                            waypointVm.setFlagEditMode(null)
+
+                                            waypointVm.updateMapSources(flagsSource, linesSource)
                                             true
                                         } else {
                                             false
@@ -344,63 +308,24 @@ class WaypointActivity : ComponentActivity() {
                                                     ?.toIntOrNull()
                                                 if (id != null) {
                                                     waypointVm.flagToMoveId = id
-                                                    waypointVm.removeWaypoint(id)
-
-                                                    val updatedFeatures =
-                                                        waypointVm.waypointPositions.map {
-                                                            Feature.fromGeometry(
-                                                                Point.fromLngLat(
-                                                                    it.lon,
-                                                                    it.lat
-                                                                )
-                                                            ).apply {
-                                                                addStringProperty(
-                                                                    "id",
-                                                                    it.id.toString()
-                                                                )
-                                                                addStringProperty(
-                                                                    "icon",
-                                                                    "flag-icon-${it.id}"
-                                                                )
-                                                            }
-                                                        }
-                                                    flagsSource.setGeoJson(
-                                                        FeatureCollection.fromFeatures(
-                                                            updatedFeatures
-                                                        )
-                                                    )
-                                                    updateConnectionLines(waypointVm, linesSource)
                                                 }
                                             }
                                             true
                                         } else {
-                                            val id = waypointVm.flagToMoveId!!
-                                            waypointVm.flagToMoveId = null
-
-                                            waypointVm.addWaypoint(
-                                                id,
+                                            waypointVm.moveWaypoint(
+                                                movingId,
                                                 latLng.longitude,
                                                 latLng.latitude
                                             )
 
-                                            val updatedFeatures = waypointVm.waypointPositions.map {
-                                                Feature.fromGeometry(
-                                                    Point.fromLngLat(
-                                                        it.lon,
-                                                        it.lat
-                                                    )
-                                                ).apply {
-                                                    addStringProperty("id", it.id.toString())
-                                                    addStringProperty("icon", "flag-icon-${it.id}")
-                                                }
-                                            }
-                                            flagsSource.setGeoJson(
-                                                FeatureCollection.fromFeatures(
-                                                    updatedFeatures
-                                                )
+                                            val combinedBitmap = createFlagWithCircleTextBitmap(
+                                                context,
+                                                movingId.toString()
                                             )
-                                            updateConnectionLines(waypointVm, linesSource)
-                                            waypointVm.setFlagEditMode(null)
+                                            waypointVm.setFlagBitmap(movingId, combinedBitmap)
+                                            style.addImage("flag-icon-$movingId", combinedBitmap)
+
+                                            waypointVm.updateMapSources(flagsSource, linesSource)
                                             true
                                         }
                                     }
@@ -415,6 +340,7 @@ class WaypointActivity : ComponentActivity() {
             modifier = modifier.fillMaxSize()
         )
     }
+
 
     fun createFlagWithCircleTextBitmap(context: Context, text: String): Bitmap {
         val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
@@ -562,28 +488,6 @@ class WaypointActivity : ComponentActivity() {
                 )
             }
         }
-    }
-
-    fun updateConnectionLines(
-        waypointVm: WaypointViewModel,
-        linesSource: GeoJsonSource
-    ) {
-        val lines = mutableListOf<Feature>()
-        val waypoints = waypointVm.waypointPositions.sortedBy { it.id }
-
-        for (i in 0 until waypoints.size - 1) {
-            val start = waypoints[i]
-            val end = waypoints[i + 1]
-            val line = LineString.fromLngLats(
-                listOf(
-                    Point.fromLngLat(start.lon, start.lat),
-                    Point.fromLngLat(end.lon, end.lat)
-                )
-            )
-            lines.add(Feature.fromGeometry(line))
-        }
-
-        linesSource.setGeoJson(FeatureCollection.fromFeatures(lines))
     }
 
     @Preview(showBackground = true)
