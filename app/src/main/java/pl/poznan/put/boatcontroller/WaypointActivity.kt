@@ -11,11 +11,11 @@ import androidx.activity.viewModels
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,23 +23,22 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -47,6 +46,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -388,7 +388,7 @@ class WaypointActivity : ComponentActivity() {
         val screenHeight = LocalWindowInfo.current.containerSize.height
         val screenHeightDp = with(density) { screenHeight.toDp() }
 
-        val toolbarWidth = screenWidthDp * 0.2f
+        val toolbarWidth = screenWidthDp * 0.15f
         val arrowBoxWidth = screenWidthDp * 0.05f
         val arrowBoxHeight = screenHeightDp * 0.2f
         val arrowBoxOffset =
@@ -429,44 +429,41 @@ class WaypointActivity : ComponentActivity() {
                                 color = Color.White
                             )
                         }
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .padding(8.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
+                                .fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.SpaceAround,
+                            ) {
+                            IconWithEffectButton(
+                                drawableId = R.drawable.waypoint_add,
+                                flagMode = FlagMode.ADD,
                                 onClick = {
                                     waypointVm.setFlagEditMode(FlagMode.ADD)
-                                    waypointVm.closeToolbar()
-                                },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
-                            }
-                            IconButton(
+                                }
+                            )
+                            IconWithEffectButton(
+                                drawableId = R.drawable.waypoint_delete,
+                                flagMode = FlagMode.REMOVE,
                                 onClick = {
                                     waypointVm.setFlagEditMode(FlagMode.REMOVE)
-                                    waypointVm.closeToolbar()
-                                },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    tint = Color.White
-                                )
-                            }
-                            IconButton(
+                                }
+                            )
+                            IconWithEffectButton(
+                                drawableId = R.drawable.waypoint_move,
+                                flagMode = FlagMode.MOVE,
                                 onClick = {
                                     waypointVm.setFlagEditMode(FlagMode.MOVE)
-                                    waypointVm.closeToolbar()
-                                },
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White)
-                            }
+                                }
+                            )
+                            IconWithEffectButton(
+                                drawableId = R.drawable.start,
+                                flagMode = FlagMode.START,
+                                onClick = {
+                                    waypointVm.setFlagEditMode(FlagMode.START)
+                                }
+                            )
                         }
                     }
                 }
@@ -487,6 +484,37 @@ class WaypointActivity : ComponentActivity() {
                     tint = Color.White
                 )
             }
+        }
+    }
+
+    @Composable
+    fun IconWithEffectButton(
+        drawableId: Int,
+        flagMode: FlagMode?,
+        onClick: () -> Unit
+    ) {
+        val borderColor = if (flagMode == waypointVm.flagMode) Color.Green else Color.Transparent
+        val shadowColor = if (flagMode == waypointVm.flagMode) Color.Green else Color.Transparent
+
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(48.dp)
+                .shadow(
+                    elevation = if (flagMode == waypointVm.flagMode) 8.dp else 0.dp,
+                    shape = CircleShape,
+                    ambientColor = shadowColor,
+                    spotColor = shadowColor
+                )
+                .border(width = 2.dp, color = borderColor, shape = CircleShape)
+                .clip(CircleShape)
+                .background(Color.DarkGray) // możesz zmienić
+        ) {
+            Icon(
+                painter = painterResource(drawableId),
+                contentDescription = null,
+                tint = Color.White
+            )
         }
     }
 
