@@ -79,6 +79,15 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         flagMode = mode
     }
 
+    fun toggleFlagEditMode(mode: FlagMode?) {
+        if(flagMode != mode && mode != null) {
+            flagMode = mode
+        }
+        else {
+            flagMode = null
+        }
+    }
+
     fun closeToolbar() {
         isExpanded = false;
     }
@@ -86,8 +95,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun updateMapSources(flagsSource: GeoJsonSource, linesSource: GeoJsonSource) {
         flagsSource.setGeoJson(FeatureCollection.fromFeatures(getFlagFeatures()))
         linesSource.setGeoJson(FeatureCollection.fromFeatures(getConnectionLines()))
-        flagToMoveId = null
-        setFlagEditMode(null)
     }
 
     fun getFlagFeatures(): List<Feature> {

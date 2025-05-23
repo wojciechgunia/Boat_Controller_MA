@@ -4,7 +4,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.PaintFlagsDrawFilter
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -13,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +46,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -71,6 +76,8 @@ import pl.poznan.put.boatcontroller.templates.RotatePhoneTutorialAnimation
 import androidx.core.graphics.createBitmap
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.expressions.Expression.literal
+import org.maplibre.android.style.expressions.Expression.match
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
@@ -308,6 +315,9 @@ class WaypointActivity : ComponentActivity() {
                                                     ?.toIntOrNull()
                                                 if (id != null) {
                                                     waypointVm.flagToMoveId = id
+                                                    val newBitmap = createFlagWithCircleTextBitmap(context, id.toString(), true)
+                                                    style.addImage("flag-icon-$id", newBitmap)
+                                                    waypointVm.updateMapSources(flagsSource, linesSource)
                                                 }
                                             }
                                             true
@@ -326,6 +336,7 @@ class WaypointActivity : ComponentActivity() {
                                             style.addImage("flag-icon-$movingId", combinedBitmap)
 
                                             waypointVm.updateMapSources(flagsSource, linesSource)
+                                            waypointVm.flagToMoveId = null
                                             true
                                         }
                                     }
@@ -342,7 +353,7 @@ class WaypointActivity : ComponentActivity() {
     }
 
 
-    fun createFlagWithCircleTextBitmap(context: Context, text: String): Bitmap {
+    fun createFlagWithCircleTextBitmap(context: Context, text: String, selected: Boolean = false): Bitmap {
         val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
 
         val cx = flagDrawable.intrinsicWidth + 0f
@@ -352,28 +363,43 @@ class WaypointActivity : ComponentActivity() {
         val minWidth = (cx + radius).toInt()
         val minHeight = (cy + radius).toInt()
 
-        val width = maxOf(flagDrawable.intrinsicWidth, minWidth)
-        val height = maxOf(flagDrawable.intrinsicHeight, minHeight)
+        val scale = if (selected) 1.2f else 1.0f
+        val width = maxOf(flagDrawable.intrinsicWidth, minWidth) * scale
+        val height = maxOf(flagDrawable.intrinsicHeight, minHeight) * scale
 
-        val paintCircle = android.graphics.Paint().apply {
-            color = android.graphics.Color.RED
+        val paintCircle = Paint().apply {
+            color = Color.Red.toArgb()
             isAntiAlias = true
         }
 
-        val paintText = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
+        val paintCircleBorder = Paint().apply {
+            color = Color.Black.toArgb()
+            style = Paint.Style.STROKE
+            strokeWidth = 10f
+            isAntiAlias = true
+        }
+
+        val paintText = Paint().apply {
+            color = Color.White.toArgb()
             textSize = 45f
-            textAlign = android.graphics.Paint.Align.CENTER
+            textAlign = Paint.Align.CENTER
             isFakeBoldText = true
             isAntiAlias = true
         }
         val textY = cy - (paintText.descent() + paintText.ascent()) / 2
 
-        val flagBitmap = createBitmap(width, height).apply {
+        val flagBitmap = createBitmap(
+            width.toInt() + 50,
+            height.toInt() + 50,
+        ).apply {
             val canvas = android.graphics.Canvas(this)
+            canvas.scale(scale, scale)
             flagDrawable.setBounds(0, 0, flagDrawable.intrinsicWidth, flagDrawable.intrinsicHeight)
             flagDrawable.draw(canvas)
             canvas.drawCircle(cx, cy, radius, paintCircle)
+            if (selected) {
+                canvas.drawCircle(cx, cy, radius, paintCircleBorder)
+            }
             canvas.drawText(text, cx, textY, paintText)
         }
         return flagBitmap
@@ -406,6 +432,11 @@ class WaypointActivity : ComponentActivity() {
                 .offset(x = animatedOffset)
                 .width(toolbarWidth + arrowBoxWidth * 0.8f)
                 .zIndex(1f)
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        Log.d("MAP", "Kliknięcie w obszar toolbara – zablokowane")
+                    }
+                }
         ) {
             Box(
                 modifier = Modifier
@@ -440,28 +471,29 @@ class WaypointActivity : ComponentActivity() {
                                 drawableId = R.drawable.waypoint_add,
                                 flagMode = FlagMode.ADD,
                                 onClick = {
-                                    waypointVm.setFlagEditMode(FlagMode.ADD)
+//                                    waypointVm.setFlagEditMode(FlagMode.ADD)
+                                    waypointVm.toggleFlagEditMode(FlagMode.ADD)
                                 }
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_delete,
                                 flagMode = FlagMode.REMOVE,
                                 onClick = {
-                                    waypointVm.setFlagEditMode(FlagMode.REMOVE)
+                                    waypointVm.toggleFlagEditMode(FlagMode.REMOVE)
                                 }
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_move,
                                 flagMode = FlagMode.MOVE,
                                 onClick = {
-                                    waypointVm.setFlagEditMode(FlagMode.MOVE)
+                                    waypointVm.toggleFlagEditMode(FlagMode.MOVE)
                                 }
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.start,
                                 flagMode = FlagMode.START,
                                 onClick = {
-                                    waypointVm.setFlagEditMode(FlagMode.START)
+                                    waypointVm.toggleFlagEditMode(FlagMode.START)
                                 }
                             )
                         }
@@ -508,7 +540,7 @@ class WaypointActivity : ComponentActivity() {
                 )
                 .border(width = 2.dp, color = borderColor, shape = CircleShape)
                 .clip(CircleShape)
-                .background(Color.DarkGray) // możesz zmienić
+                .background(Color.DarkGray)
         ) {
             Icon(
                 painter = painterResource(drawableId),
