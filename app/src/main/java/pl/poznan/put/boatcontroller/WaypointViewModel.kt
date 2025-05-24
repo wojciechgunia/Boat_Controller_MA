@@ -17,24 +17,11 @@ import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.FlagMode
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
-    var isExpanded by mutableStateOf(false)
-    var flagToMoveId: Int? by mutableStateOf(null)
+    var isToolbarOpened by mutableStateOf(false)
     val shipPosition = doubleArrayOf(52.404633, 16.957722)
 
-    var waypointPositions = mutableStateListOf<WaypointObject>()
-    var nextFlagId = 1
-
-    private val _flagBitmaps = mutableStateMapOf<Int, Bitmap>()
-    val flagBitmaps: Map<Int, Bitmap> = _flagBitmaps
-
-    fun setFlagBitmap(id: Int, bitmap: Bitmap) {
-        _flagBitmaps[id] = bitmap
-    }
-
-    fun hasBitmap(id: Int) = _flagBitmaps.containsKey(id)
-
     fun getNextAvailableId(): Int {
-        val usedIds = waypointPositions.map { it.id }.toSet()
+        val usedIds = flagPositions.map { it.id }.toSet()
         var id = 1
         while (id in usedIds) {
             id++
@@ -42,36 +29,46 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         return id
     }
 
-    fun addWaypoint(lon: Double, lat: Double): WaypointObject {
+    private val _flagBitmaps = mutableStateMapOf<Int, Bitmap>()
+    val flagBitmaps: Map<Int, Bitmap> = _flagBitmaps
+    var flagPositions = mutableStateListOf<WaypointObject>()
+
+    fun setFlagBitmap(id: Int, bitmap: Bitmap) {
+        _flagBitmaps[id] = bitmap
+    }
+
+    fun hasBitmap(id: Int) = _flagBitmaps.containsKey(id)
+
+    fun addFlag(lon: Double, lat: Double): WaypointObject {
         val id = getNextAvailableId()
         val waypoint = WaypointObject(id, lon, lat)
-        waypointPositions.add(waypoint)
+        flagPositions.add(waypoint)
         return waypoint
     }
 
-    fun removeWaypoint(id: Int) {
-        waypointPositions.removeAll { it.id == id }
-        reindexWaypoints()
+    fun removeFlag(id: Int) {
+        flagPositions.removeAll { it.id == id }
+        reindexFlags()
     }
 
-    fun moveWaypoint(id: Int, newLon: Double, newLat: Double) {
-        val index = waypointPositions.indexOfFirst { it.id == id }
+    fun moveFlag(id: Int, newLon: Double, newLat: Double) {
+        val index = flagPositions.indexOfFirst { it.id == id }
         if (index != -1) {
-            waypointPositions[index] = waypointPositions[index].copy(lon = newLon, lat = newLat)
+            flagPositions[index] = flagPositions[index].copy(lon = newLon, lat = newLat)
         }
     }
 
-    fun reindexWaypoints() {
-        waypointPositions.forEachIndexed { index, wp ->
+    fun reindexFlags() {
+        flagPositions.drop(1).forEachIndexed { index, wp ->
             val oldId = wp.id
             val newId = index + 1
             if (oldId != newId) {
                 wp.id = newId
             }
         }
-        nextFlagId = waypointPositions.size + 1
     }
 
+    var flagToMoveId: Int? by mutableStateOf(null)
     var flagMode by mutableStateOf<FlagMode?>(null)
         private set
 
@@ -88,17 +85,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun closeToolbar() {
-        isExpanded = false;
-    }
-
     fun updateMapSources(flagsSource: GeoJsonSource, linesSource: GeoJsonSource) {
         flagsSource.setGeoJson(FeatureCollection.fromFeatures(getFlagFeatures()))
         linesSource.setGeoJson(FeatureCollection.fromFeatures(getConnectionLines()))
     }
 
     fun getFlagFeatures(): List<Feature> {
-        return waypointPositions.map {
+        return flagPositions.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "flag-icon-${it.id}")
@@ -108,7 +101,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getConnectionLines(): List<Feature> {
         val lines = mutableListOf<Feature>()
-        val waypoints = waypointPositions.sortedBy { it.id }
+        val waypoints = flagPositions.sortedBy { it.id }
 
         for (i in 0 until waypoints.size - 1) {
             val start = waypoints[i]

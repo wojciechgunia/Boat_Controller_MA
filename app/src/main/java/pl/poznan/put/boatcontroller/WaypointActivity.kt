@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PaintFlagsDrawFilter
 import android.os.Bundle
@@ -88,6 +89,8 @@ import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 
 import pl.poznan.put.boatcontroller.enums.FlagMode
+import androidx.core.graphics.scale
+import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
@@ -133,7 +136,7 @@ class WaypointActivity : ComponentActivity() {
     @Composable
     fun MapTab(waypointVm: WaypointViewModel, modifier: Modifier = Modifier) {
         val context = LocalContext.current
-        val waypointScaling = 0.45f
+        val flagSizeScaling = 0.45f
 
         AndroidView(
             factory = {
@@ -180,7 +183,7 @@ class WaypointActivity : ComponentActivity() {
                               "source": "point-source",
                               "layout": {
                                 "icon-image": "ship-icon",
-                                "icon-size": 0.04,
+                                "icon-size": 0.07,
                                 "icon-allow-overlap": true
                               }
                             }
@@ -192,7 +195,7 @@ class WaypointActivity : ComponentActivity() {
                             shipDrawable.intrinsicWidth,
                             shipDrawable.intrinsicHeight
                         ).apply {
-                            val canvas = android.graphics.Canvas(this)
+                            val canvas = Canvas(this)
                             shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
                             shipDrawable.draw(canvas)
                         }
@@ -208,7 +211,7 @@ class WaypointActivity : ComponentActivity() {
                             val flagLayer = SymbolLayer("flags-layer", "flags-source")
                                 .withProperties(
                                     iconImage(get("icon")),
-                                    iconSize(waypointScaling),
+                                    iconSize(flagSizeScaling),
                                     iconAllowOverlap(true),
                                 )
 
@@ -242,26 +245,31 @@ class WaypointActivity : ComponentActivity() {
                             mapboxMap.moveCamera(CameraUpdateFactory.newCameraPosition(position))
                             mapboxMap.uiSettings.isRotateGesturesEnabled = false
 
+                            val startWaypoint = WaypointObject(0, waypointVm.shipPosition[1], waypointVm.shipPosition[0])
+                            waypointVm.flagPositions.add(startWaypoint)
+
                             mapboxMap.addOnMapClickListener { latLng ->
                                 val mode = waypointVm.flagMode
 
                                 when (mode) {
                                     FlagMode.ADD -> {
-                                        val newWaypoint = waypointVm.addWaypoint(
+                                        val newWaypoint = waypointVm.addFlag(
                                             latLng.longitude,
                                             latLng.latitude
                                         )
 
-                                        val combinedBitmap = createFlagWithCircleTextBitmap(
+                                        val combinedBitmap = createFlagBitmap(
                                             context,
                                             newWaypoint.id.toString()
                                         )
                                         waypointVm.setFlagBitmap(newWaypoint.id, combinedBitmap)
 
-                                        style.addImage(
-                                            "flag-icon-${newWaypoint.id}",
-                                            combinedBitmap
-                                        )
+                                        if (style.getImage("flag-icon-${newWaypoint.id}") == null) {
+                                            style.addImage(
+                                                "flag-icon-${newWaypoint.id}",
+                                                combinedBitmap
+                                            )
+                                        }
 
                                         waypointVm.updateMapSources(flagsSource, linesSource)
                                         true
@@ -282,7 +290,7 @@ class WaypointActivity : ComponentActivity() {
                                                 ?.toIntOrNull()
 
                                             if (id != null) {
-                                                waypointVm.removeWaypoint(id)
+                                                waypointVm.removeFlag(id)
 
                                                 waypointVm.flagBitmaps.forEach { (id, bitmap) ->
                                                     style.addImage(
@@ -293,6 +301,7 @@ class WaypointActivity : ComponentActivity() {
                                             }
 
                                             waypointVm.updateMapSources(flagsSource, linesSource)
+                                            Log.d("Flags IDs", waypointVm.flagPositions.toString())
                                             true
                                         } else {
                                             false
@@ -315,25 +324,23 @@ class WaypointActivity : ComponentActivity() {
                                                     ?.toIntOrNull()
                                                 if (id != null) {
                                                     waypointVm.flagToMoveId = id
-                                                    val newBitmap = createFlagWithCircleTextBitmap(context, id.toString(), true)
-                                                    style.addImage("flag-icon-$id", newBitmap)
+                                                    val bitmap = waypointVm.flagBitmaps[id]!!
+                                                    val selectedBitmap =
+                                                        bitmap.scale((bitmap.width * 1.2f).toInt(), (bitmap.height * 1.2f).toInt())
+                                                    style.addImage("flag-icon-$id", selectedBitmap)
                                                     waypointVm.updateMapSources(flagsSource, linesSource)
                                                 }
                                             }
                                             true
                                         } else {
-                                            waypointVm.moveWaypoint(
+                                            waypointVm.moveFlag(
                                                 movingId,
                                                 latLng.longitude,
                                                 latLng.latitude
                                             )
 
-                                            val combinedBitmap = createFlagWithCircleTextBitmap(
-                                                context,
-                                                movingId.toString()
-                                            )
-                                            waypointVm.setFlagBitmap(movingId, combinedBitmap)
-                                            style.addImage("flag-icon-$movingId", combinedBitmap)
+                                            val bitmap = waypointVm.flagBitmaps[movingId]!!
+                                            style.addImage("flag-icon-$movingId", bitmap)
 
                                             waypointVm.updateMapSources(flagsSource, linesSource)
                                             waypointVm.flagToMoveId = null
@@ -353,7 +360,7 @@ class WaypointActivity : ComponentActivity() {
     }
 
 
-    fun createFlagWithCircleTextBitmap(context: Context, text: String, selected: Boolean = false): Bitmap {
+    fun createFlagBitmap(context: Context, text: String): Bitmap {
         val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
 
         val cx = flagDrawable.intrinsicWidth + 0f
@@ -363,9 +370,8 @@ class WaypointActivity : ComponentActivity() {
         val minWidth = (cx + radius).toInt()
         val minHeight = (cy + radius).toInt()
 
-        val scale = if (selected) 1.2f else 1.0f
-        val width = maxOf(flagDrawable.intrinsicWidth, minWidth) * scale
-        val height = maxOf(flagDrawable.intrinsicHeight, minHeight) * scale
+        val width = maxOf(flagDrawable.intrinsicWidth, minWidth)
+        val height = maxOf(flagDrawable.intrinsicHeight, minHeight)
 
         val paintCircle = Paint().apply {
             color = Color.Red.toArgb()
@@ -375,7 +381,7 @@ class WaypointActivity : ComponentActivity() {
         val paintCircleBorder = Paint().apply {
             color = Color.Black.toArgb()
             style = Paint.Style.STROKE
-            strokeWidth = 10f
+            strokeWidth = 6f
             isAntiAlias = true
         }
 
@@ -392,14 +398,11 @@ class WaypointActivity : ComponentActivity() {
             width.toInt() + 50,
             height.toInt() + 50,
         ).apply {
-            val canvas = android.graphics.Canvas(this)
-            canvas.scale(scale, scale)
+            val canvas = Canvas(this)
             flagDrawable.setBounds(0, 0, flagDrawable.intrinsicWidth, flagDrawable.intrinsicHeight)
             flagDrawable.draw(canvas)
             canvas.drawCircle(cx, cy, radius, paintCircle)
-            if (selected) {
-                canvas.drawCircle(cx, cy, radius, paintCircleBorder)
-            }
+            canvas.drawCircle(cx, cy, radius, paintCircleBorder)
             canvas.drawText(text, cx, textY, paintText)
         }
         return flagBitmap
@@ -418,10 +421,10 @@ class WaypointActivity : ComponentActivity() {
         val arrowBoxWidth = screenWidthDp * 0.05f
         val arrowBoxHeight = screenHeightDp * 0.2f
         val arrowBoxOffset =
-            if (waypointVm.isExpanded) toolbarWidth - (arrowBoxWidth / 2) else toolbarWidth - (arrowBoxWidth / 4)
+            if (waypointVm.isToolbarOpened) toolbarWidth - (arrowBoxWidth / 2) else toolbarWidth - (arrowBoxWidth / 4)
 
         val animatedOffset by animateDpAsState(
-            targetValue = if (waypointVm.isExpanded) 0.dp else -toolbarWidth,
+            targetValue = if (waypointVm.isToolbarOpened) 0.dp else -toolbarWidth,
             animationSpec = tween(300),
             label = "ToolbarOffset"
         )
@@ -434,7 +437,7 @@ class WaypointActivity : ComponentActivity() {
                 .zIndex(1f)
                 .pointerInput(Unit) {
                     detectTapGestures {
-                        Log.d("MAP", "Kliknięcie w obszar toolbara – zablokowane")
+                        Log.d("MAP", "Kliknięcie w obszar toolbara zablokowane podczas operacji")
                     }
                 }
         ) {
@@ -444,7 +447,7 @@ class WaypointActivity : ComponentActivity() {
                     .width(toolbarWidth)
                     .background(Color.Black)
             ) {
-                if (waypointVm.isExpanded) {
+                if (waypointVm.isToolbarOpened) {
                     Column(
                         modifier = Modifier.padding(top = 16.dp)
                     ) {
@@ -507,11 +510,11 @@ class WaypointActivity : ComponentActivity() {
                     .align(Alignment.CenterStart)
                     .offset(x = arrowBoxOffset)
                     .background(Color.DarkGray, shape = RoundedCornerShape(8.dp))
-                    .clickable { waypointVm.isExpanded = !waypointVm.isExpanded },
+                    .clickable { waypointVm.isToolbarOpened = !waypointVm.isToolbarOpened },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (waypointVm.isExpanded) Icons.AutoMirrored.Default.KeyboardArrowLeft else Icons.AutoMirrored.Default.KeyboardArrowRight,
+                    imageVector = if (waypointVm.isToolbarOpened) Icons.AutoMirrored.Default.KeyboardArrowLeft else Icons.AutoMirrored.Default.KeyboardArrowRight,
                     contentDescription = "Toggle",
                     tint = Color.White
                 )
