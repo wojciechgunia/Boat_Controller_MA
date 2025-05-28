@@ -2,6 +2,7 @@ package pl.poznan.put.boatcontroller
 
 import android.app.Application
 import android.graphics.Bitmap
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -13,12 +14,17 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.FlagMode
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var isToolbarOpened by mutableStateOf(false)
     val shipPosition = doubleArrayOf(52.404633, 16.957722)
+
+    fun ownGetShipPosition(): DoubleArray {
+        return shipPosition
+    }
 
     fun getNextAvailableId(): Int {
         val usedIds = flagPositions.map { it.id }.toSet()
@@ -37,7 +43,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         _flagBitmaps[id] = bitmap
     }
 
-    fun hasBitmap(id: Int) = _flagBitmaps.containsKey(id)
+//    fun hasBitmap(id: Int) = _flagBitmaps.containsKey(id)
 
     fun addFlag(lon: Double, lat: Double): WaypointObject {
         val id = getNextAvailableId()
@@ -48,7 +54,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeFlag(id: Int) {
         flagPositions.removeAll { it.id == id }
-        reindexFlags()
+        reindexFlags(id)
     }
 
     fun moveFlag(id: Int, newLon: Double, newLat: Double) {
@@ -58,12 +64,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun reindexFlags() {
-        flagPositions.drop(1).forEachIndexed { index, wp ->
-            val oldId = wp.id
-            val newId = index + 1
-            if (oldId != newId) {
-                wp.id = newId
+    fun reindexFlags(removedId: Int) {
+        flagPositions.forEach { wp ->
+            if (wp.id > removedId) {
+                wp.id -= 1
             }
         }
     }
@@ -72,16 +76,15 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var flagMode by mutableStateOf<FlagMode?>(null)
         private set
 
-    fun setFlagEditMode(mode: FlagMode?) {
-        flagMode = mode
-    }
+//    fun setFlagEditMode(mode: FlagMode?) {
+//        flagMode = mode
+//    }
 
     fun toggleFlagEditMode(mode: FlagMode?) {
-        if(flagMode != mode && mode != null) {
-            flagMode = mode
-        }
-        else {
-            flagMode = null
+        flagMode = if(flagMode != mode && mode != null) {
+            mode
+        } else {
+            null
         }
     }
 
@@ -116,6 +119,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         return lines
+    }
+
+    private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
+    val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
+
+    fun saveCameraPosition(lat: Double, lng: Double, zoom: Double) {
+        _cameraPosition.value = CameraPositionState(lat, lng, zoom)
     }
 }
 

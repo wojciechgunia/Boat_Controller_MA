@@ -6,7 +6,6 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.PaintFlagsDrawFilter
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -33,12 +32,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -77,8 +80,6 @@ import pl.poznan.put.boatcontroller.templates.RotatePhoneTutorialAnimation
 import androidx.core.graphics.createBitmap
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.style.expressions.Expression.get
-import org.maplibre.android.style.expressions.Expression.literal
-import org.maplibre.android.style.expressions.Expression.match
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
@@ -87,13 +88,17 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
-
 import pl.poznan.put.boatcontroller.enums.FlagMode
 import androidx.core.graphics.scale
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import org.maplibre.android.maps.MapLibreMap
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
+    val cameraZoomAnimationTime = 2 // Czas animacji zoomowania kamery w sekundach
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,6 +106,10 @@ class WaypointActivity : ComponentActivity() {
             val context = LocalContext.current
             val colorScheme = MaterialTheme.colorScheme
 
+            MapLibre.getInstance(
+                applicationContext
+            )
+//            Log.d("WAYPOINTS", waypointVm.flagPositions.toString())
             val image = remember {
                 ResourcesCompat.getDrawable(
                     context.resources,
@@ -126,24 +135,81 @@ class WaypointActivity : ComponentActivity() {
 
     @Composable
     fun WaypointControlScreen(waypointVm: WaypointViewModel) {
+        val mapLibreMapState = remember { mutableStateOf<MapLibreMap?>(null) }
+
         Box(modifier = Modifier.fillMaxSize()) {
-            MapTab(waypointVm)
+            MapTab(
+                waypointVm = waypointVm,
+                onMapReady = { map -> mapLibreMapState.value = map }
+            )
+
             SlidingToolbar(waypointVm)
+
+            FloatingActionButton(
+                onClick = {
+                    val shipPosition = waypointVm.ownGetShipPosition()
+                    val zoom = 13.0
+                    mapLibreMapState.value?.animateCamera(
+                        CameraUpdateFactory.newLatLngZoom(LatLng(shipPosition[0], shipPosition[1]), zoom),
+                        cameraZoomAnimationTime * 1000
+                    )
+                },
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .shadow(16.dp, CircleShape, clip = false)
+                    .clip(CircleShape),
+                containerColor = colorResource(id = R.color.blue)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.current_location_tracker),
+                    contentDescription = "Center Map",
+                    tint = Color.White
+                )
+            }
         }
     }
 
     @SuppressLint("InflateParams")
     @Composable
-    fun MapTab(waypointVm: WaypointViewModel, modifier: Modifier = Modifier) {
+    fun MapTab(waypointVm: WaypointViewModel, onMapReady: (MapLibreMap) -> Unit) {
         val context = LocalContext.current
         val flagSizeScaling = 0.45f
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val mapView = remember { MapView(context) }
+
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE) {
+                    mapView.getMapAsync { map ->
+                        map.cameraPosition.let { pos ->
+                            val target = pos.target
+                            if (target != null) {
+                                waypointVm.saveCameraPosition(
+                                    target.latitude,
+                                    target.longitude,
+                                    pos.zoom
+                                )
+                                }
+                        }
+                    }
+                }
+            }
+
+            lifecycleOwner.lifecycle.addObserver(observer)
+
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
+        }
 
         AndroidView(
-            factory = {
-                MapLibre.getInstance(context)
-                MapView(context).apply {
-                    getMapAsync { mapboxMap ->
-                        val styleJson = """
+            factory = { mapView },
+            modifier = Modifier.fillMaxSize(),
+            update = { mapView ->
+                mapView.getMapAsync { mapboxMap ->
+                    val styleJson = """
                         {
                           "version": 8,
                           "sources": {
@@ -190,95 +256,134 @@ class WaypointActivity : ComponentActivity() {
                           ]
                         }
                     """.trimIndent()
-                        val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
-                        val shipBitmap = createBitmap(
-                            shipDrawable.intrinsicWidth,
-                            shipDrawable.intrinsicHeight
-                        ).apply {
-                            val canvas = Canvas(this)
-                            shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
-                            shipDrawable.draw(canvas)
-                        }
-                        mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                            style.addImage("ship-icon", shipBitmap)
+                    val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
+                    val shipBitmap = createBitmap(
+                        shipDrawable.intrinsicWidth,
+                        shipDrawable.intrinsicHeight
+                    ).apply {
+                        val canvas = Canvas(this)
+                        shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                        shipDrawable.draw(canvas)
+                    }
+                    mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                        style.addImage("ship-icon", shipBitmap)
 
-                            val flagsSource = GeoJsonSource(
-                                "flags-source",
-                                FeatureCollection.fromFeatures(emptyArray())
+                        val flagsSource = GeoJsonSource(
+                            "flags-source",
+                            FeatureCollection.fromFeatures(emptyArray())
+                        )
+                        style.addSource(flagsSource)
+
+                        val flagLayer = SymbolLayer("flags-layer", "flags-source")
+                            .withProperties(
+                                iconImage(get("icon")),
+                                iconSize(flagSizeScaling),
+                                iconAllowOverlap(true),
                             )
-                            style.addSource(flagsSource)
 
-                            val flagLayer = SymbolLayer("flags-layer", "flags-source")
-                                .withProperties(
-                                    iconImage(get("icon")),
-                                    iconSize(flagSizeScaling),
-                                    iconAllowOverlap(true),
-                                )
+                        style.addLayer(flagLayer)
 
-                            style.addLayer(flagLayer)
+                        val linesSource = GeoJsonSource(
+                            "lines-source",
+                            FeatureCollection.fromFeatures(emptyArray())
+                        )
+                        style.addSource(linesSource)
 
-                            val linesSource = GeoJsonSource(
-                                "lines-source",
-                                FeatureCollection.fromFeatures(emptyArray())
+                        val lineLayer = LineLayer("lines-layer", "lines-source")
+                            .withProperties(
+                                lineColor(Color.Black.toArgb()),
+                                lineWidth(2.0f),
+                                lineDasharray(arrayOf(2f, 2f)),
+                                lineCap(Property.LINE_CAP_ROUND),
+                                lineJoin(Property.LINE_JOIN_ROUND)
                             )
-                            style.addSource(linesSource)
+                        style.addLayerBelow(lineLayer, "flags-layer")
 
-                            val lineLayer = LineLayer("lines-layer", "lines-source")
-                                .withProperties(
-                                    lineColor(Color.Black.toArgb()),
-                                    lineWidth(2.0f),
-                                    lineDasharray(arrayOf(2f, 2f)),
-                                    lineCap(Property.LINE_CAP_ROUND),
-                                    lineJoin(Property.LINE_JOIN_ROUND)
-                                )
-                            style.addLayerBelow(lineLayer, "flags-layer")
+                        val savedCamPos = waypointVm.cameraPosition.value
 
-                            val position = CameraPosition.Builder()
-                                .target(
-                                    LatLng(
-                                        waypointVm.shipPosition[0],
-                                        waypointVm.shipPosition[1]
-                                    )
+                        if (savedCamPos != null) {
+                            mapboxMap.moveCamera(
+                                CameraUpdateFactory.newLatLngZoom(
+                                    LatLng(savedCamPos.lon, savedCamPos.lat),
+                                    savedCamPos.zoom
                                 )
+                            )
+                        } else {
+                            val defaultPosition = CameraPosition.Builder()
+                                .target(LatLng(waypointVm.shipPosition[0], waypointVm.shipPosition[1]))
                                 .zoom(13.0)
                                 .build()
-                            mapboxMap.moveCamera(CameraUpdateFactory.newCameraPosition(position))
-                            mapboxMap.uiSettings.isRotateGesturesEnabled = false
 
-                            val startWaypoint = WaypointObject(0, waypointVm.shipPosition[1], waypointVm.shipPosition[0])
-                            waypointVm.flagPositions.add(startWaypoint)
+                            mapboxMap.moveCamera(CameraUpdateFactory.newCameraPosition(defaultPosition))
+                        }
 
-                            mapboxMap.addOnMapClickListener { latLng ->
-                                val mode = waypointVm.flagMode
+                        mapboxMap.uiSettings.isRotateGesturesEnabled = false
 
-                                when (mode) {
-                                    FlagMode.ADD -> {
-                                        val newWaypoint = waypointVm.addFlag(
-                                            latLng.longitude,
-                                            latLng.latitude
+                        val startWaypoint = WaypointObject(
+                            0,
+                            waypointVm.shipPosition[1],
+                            waypointVm.shipPosition[0]
+                        )
+                        waypointVm.flagPositions.add(startWaypoint)
+
+                        mapboxMap.addOnMapClickListener { latLng ->
+                            val mode = waypointVm.flagMode
+
+                            when (mode) {
+                                FlagMode.ADD -> {
+                                    val newWaypoint = waypointVm.addFlag(
+                                        latLng.longitude,
+                                        latLng.latitude
+                                    )
+
+                                    val combinedBitmap = createFlagBitmap(
+                                        context,
+                                        newWaypoint.id.toString()
+                                    )
+                                    waypointVm.setFlagBitmap(newWaypoint.id, combinedBitmap)
+
+                                    if (style.getImage("flag-icon-${newWaypoint.id}") == null) {
+                                        style.addImage(
+                                            "flag-icon-${newWaypoint.id}",
+                                            combinedBitmap
                                         )
+                                    }
 
-                                        val combinedBitmap = createFlagBitmap(
-                                            context,
-                                            newWaypoint.id.toString()
-                                        )
-                                        waypointVm.setFlagBitmap(newWaypoint.id, combinedBitmap)
+                                    waypointVm.updateMapSources(flagsSource, linesSource)
+                                    true
+                                }
 
-                                        if (style.getImage("flag-icon-${newWaypoint.id}") == null) {
-                                            style.addImage(
-                                                "flag-icon-${newWaypoint.id}",
-                                                combinedBitmap
-                                            )
+                                FlagMode.REMOVE -> {
+                                    val screenPoint =
+                                        mapboxMap.projection.toScreenLocation(latLng)
+
+                                    val features = mapboxMap.queryRenderedFeatures(
+                                        screenPoint,
+                                        "flags-layer"
+                                    )
+
+                                    if (features.isNotEmpty()) {
+                                        val clickedFeature = features.first()
+                                        val id = clickedFeature.getStringProperty("id")
+                                            ?.toIntOrNull()
+
+                                        if (id != null) {
+                                            waypointVm.removeFlag(id)
+                                            updateFlagBitmaps(style)
                                         }
 
                                         waypointVm.updateMapSources(flagsSource, linesSource)
                                         true
+                                    } else {
+                                        false
                                     }
+                                }
 
-                                    FlagMode.REMOVE -> {
+                                FlagMode.MOVE -> {
+                                    val movingId = waypointVm.flagToMoveId
+                                    if (movingId == null) {
                                         val screenPoint =
                                             mapboxMap.projection.toScreenLocation(latLng)
-
                                         val features = mapboxMap.queryRenderedFeatures(
                                             screenPoint,
                                             "flags-layer"
@@ -288,77 +393,49 @@ class WaypointActivity : ComponentActivity() {
                                             val clickedFeature = features.first()
                                             val id = clickedFeature.getStringProperty("id")
                                                 ?.toIntOrNull()
-
                                             if (id != null) {
-                                                waypointVm.removeFlag(id)
-
-                                                waypointVm.flagBitmaps.forEach { (id, bitmap) ->
-                                                    style.addImage(
-                                                        "flag-icon-$id",
-                                                        bitmap
+                                                waypointVm.flagToMoveId = id
+                                                val bitmap = waypointVm.flagBitmaps[id]!!
+                                                val selectedBitmap =
+                                                    bitmap.scale(
+                                                        (bitmap.width * 1.2f).toInt(),
+                                                        (bitmap.height * 1.2f).toInt()
                                                     )
-                                                }
+                                                style.addImage("flag-icon-$id", selectedBitmap)
+                                                waypointVm.updateMapSources(
+                                                    flagsSource,
+                                                    linesSource
+                                                )
                                             }
-
-                                            waypointVm.updateMapSources(flagsSource, linesSource)
-                                            Log.d("Flags IDs", waypointVm.flagPositions.toString())
-                                            true
-                                        } else {
-                                            false
                                         }
+                                        true
+                                    } else {
+                                        waypointVm.moveFlag(
+                                            movingId,
+                                            latLng.longitude,
+                                            latLng.latitude
+                                        )
+
+                                        val bitmap = waypointVm.flagBitmaps[movingId]!!
+                                        style.addImage("flag-icon-$movingId", bitmap)
+
+                                        waypointVm.updateMapSources(flagsSource, linesSource)
+                                        waypointVm.flagToMoveId = null
+                                        true
                                     }
-
-                                    FlagMode.MOVE -> {
-                                        val movingId = waypointVm.flagToMoveId
-                                        if (movingId == null) {
-                                            val screenPoint =
-                                                mapboxMap.projection.toScreenLocation(latLng)
-                                            val features = mapboxMap.queryRenderedFeatures(
-                                                screenPoint,
-                                                "flags-layer"
-                                            )
-
-                                            if (features.isNotEmpty()) {
-                                                val clickedFeature = features.first()
-                                                val id = clickedFeature.getStringProperty("id")
-                                                    ?.toIntOrNull()
-                                                if (id != null) {
-                                                    waypointVm.flagToMoveId = id
-                                                    val bitmap = waypointVm.flagBitmaps[id]!!
-                                                    val selectedBitmap =
-                                                        bitmap.scale((bitmap.width * 1.2f).toInt(), (bitmap.height * 1.2f).toInt())
-                                                    style.addImage("flag-icon-$id", selectedBitmap)
-                                                    waypointVm.updateMapSources(flagsSource, linesSource)
-                                                }
-                                            }
-                                            true
-                                        } else {
-                                            waypointVm.moveFlag(
-                                                movingId,
-                                                latLng.longitude,
-                                                latLng.latitude
-                                            )
-
-                                            val bitmap = waypointVm.flagBitmaps[movingId]!!
-                                            style.addImage("flag-icon-$movingId", bitmap)
-
-                                            waypointVm.updateMapSources(flagsSource, linesSource)
-                                            waypointVm.flagToMoveId = null
-                                            true
-                                        }
-                                    }
-
-                                    else -> false
                                 }
+
+                                else -> false
                             }
                         }
+                        updateFlagBitmaps(style)
+                        waypointVm.updateMapSources(flagsSource, linesSource)
                     }
+                    onMapReady(mapboxMap)
                 }
-            },
-            modifier = modifier.fillMaxSize()
+            }
         )
     }
-
 
     fun createFlagBitmap(context: Context, text: String): Bitmap {
         val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
@@ -549,6 +626,15 @@ class WaypointActivity : ComponentActivity() {
                 painter = painterResource(drawableId),
                 contentDescription = null,
                 tint = Color.White
+            )
+        }
+    }
+
+    fun updateFlagBitmaps(style: Style) {
+        waypointVm.flagBitmaps.forEach { (idx, bitmap) ->
+            style.addImage(
+                "flag-icon-$idx",
+                bitmap
             )
         }
     }
