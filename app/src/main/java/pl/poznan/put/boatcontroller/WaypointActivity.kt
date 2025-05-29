@@ -39,9 +39,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -136,6 +138,21 @@ class WaypointActivity : ComponentActivity() {
     @Composable
     fun WaypointControlScreen(waypointVm: WaypointViewModel) {
         val mapLibreMapState = remember { mutableStateOf<MapLibreMap?>(null) }
+        val shipPos = waypointVm.shipPosition
+
+        LaunchedEffect(Unit) {
+            snapshotFlow { waypointVm.flagPositions.toList() to shipPos.value }
+                .collect {
+                    val (flags, ship) = it
+                    val flagsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("flags-source")
+                    val linesSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("lines-source")
+                    val shipSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("ship-source")
+
+                    if (flagsSource != null && linesSource != null && shipSource != null) {
+                        waypointVm.updateMapSources(flagsSource, linesSource, shipSource)
+                    }
+                }
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             MapTab(
@@ -147,10 +164,15 @@ class WaypointActivity : ComponentActivity() {
 
             FloatingActionButton(
                 onClick = {
-                    val shipPosition = waypointVm.ownGetShipPosition()
+                    val shipPosition = waypointVm.shipPosition.value
                     val zoom = 13.0
                     mapLibreMapState.value?.animateCamera(
-                        CameraUpdateFactory.newLatLngZoom(LatLng(shipPosition[0], shipPosition[1]), zoom),
+                        CameraUpdateFactory.newLatLngZoom(
+                            LatLng(
+                                shipPosition.lat,
+                                shipPosition.lon
+                            ), zoom
+                        ),
                         cameraZoomAnimationTime * 1000
                     )
                 },
@@ -191,7 +213,7 @@ class WaypointActivity : ComponentActivity() {
                                     target.longitude,
                                     pos.zoom
                                 )
-                                }
+                            }
                         }
                     }
                 }
@@ -218,7 +240,7 @@ class WaypointActivity : ComponentActivity() {
                               "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
                               "tileSize": 256
                             },
-                            "point-source": {
+                            "ship-source": {
                               "type": "geojson",
                               "data": {
                                 "type": "FeatureCollection",
@@ -227,7 +249,7 @@ class WaypointActivity : ComponentActivity() {
                                     "type": "Feature",
                                     "geometry": {
                                       "type": "Point",
-                                      "coordinates": [${waypointVm.shipPosition[1]}, ${waypointVm.shipPosition[0]}]
+                                      "coordinates": [${waypointVm.shipPosition.value.lon}, ${waypointVm.shipPosition.value.lat}]
                                     },
                                     "properties": {
                                       "title": "Ship"
@@ -244,9 +266,9 @@ class WaypointActivity : ComponentActivity() {
                               "source": "osm"
                             },
                             {
-                              "id": "point-layer",
+                              "id": "ship-layer",
                               "type": "symbol",
-                              "source": "point-source",
+                              "source": "ship-source",
                               "layout": {
                                 "icon-image": "ship-icon",
                                 "icon-size": 0.07,
@@ -256,6 +278,7 @@ class WaypointActivity : ComponentActivity() {
                           ]
                         }
                     """.trimIndent()
+
                     val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
                     val shipBitmap = createBitmap(
                         shipDrawable.intrinsicWidth,
@@ -265,6 +288,7 @@ class WaypointActivity : ComponentActivity() {
                         shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
                         shipDrawable.draw(canvas)
                     }
+
                     mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                         style.addImage("ship-icon", shipBitmap)
 
@@ -310,25 +334,34 @@ class WaypointActivity : ComponentActivity() {
                             )
                         } else {
                             val defaultPosition = CameraPosition.Builder()
-                                .target(LatLng(waypointVm.shipPosition[0], waypointVm.shipPosition[1]))
+                                .target(
+                                    LatLng(
+                                        waypointVm.shipPosition.value.lat,
+                                        waypointVm.shipPosition.value.lon
+                                    )
+                                )
                                 .zoom(13.0)
                                 .build()
 
-                            mapboxMap.moveCamera(CameraUpdateFactory.newCameraPosition(defaultPosition))
+                            mapboxMap.moveCamera(
+                                CameraUpdateFactory.newCameraPosition(
+                                    defaultPosition
+                                )
+                            )
                         }
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
 
                         val startWaypoint = WaypointObject(
                             0,
-                            waypointVm.shipPosition[1],
-                            waypointVm.shipPosition[0]
+                            waypointVm.shipPosition.value.lon,
+                            waypointVm.shipPosition.value.lat
                         )
                         waypointVm.flagPositions.add(startWaypoint)
 
                         mapboxMap.addOnMapClickListener { latLng ->
                             val mode = waypointVm.flagMode
-
+                            Log.d("FLAGMODE", "Current mode: $mode")
                             when (mode) {
                                 FlagMode.ADD -> {
                                     val newWaypoint = waypointVm.addFlag(
@@ -348,8 +381,6 @@ class WaypointActivity : ComponentActivity() {
                                             combinedBitmap
                                         )
                                     }
-
-                                    waypointVm.updateMapSources(flagsSource, linesSource)
                                     true
                                 }
 
@@ -371,8 +402,6 @@ class WaypointActivity : ComponentActivity() {
                                             waypointVm.removeFlag(id)
                                             updateFlagBitmaps(style)
                                         }
-
-                                        waypointVm.updateMapSources(flagsSource, linesSource)
                                         true
                                     } else {
                                         false
@@ -402,10 +431,6 @@ class WaypointActivity : ComponentActivity() {
                                                         (bitmap.height * 1.2f).toInt()
                                                     )
                                                 style.addImage("flag-icon-$id", selectedBitmap)
-                                                waypointVm.updateMapSources(
-                                                    flagsSource,
-                                                    linesSource
-                                                )
                                             }
                                         }
                                         true
@@ -419,7 +444,6 @@ class WaypointActivity : ComponentActivity() {
                                         val bitmap = waypointVm.flagBitmaps[movingId]!!
                                         style.addImage("flag-icon-$movingId", bitmap)
 
-                                        waypointVm.updateMapSources(flagsSource, linesSource)
                                         waypointVm.flagToMoveId = null
                                         true
                                     }
@@ -429,7 +453,6 @@ class WaypointActivity : ComponentActivity() {
                             }
                         }
                         updateFlagBitmaps(style)
-                        waypointVm.updateMapSources(flagsSource, linesSource)
                     }
                     onMapReady(mapboxMap)
                 }
@@ -486,7 +509,9 @@ class WaypointActivity : ComponentActivity() {
     }
 
     @Composable
-    fun SlidingToolbar(waypointVm: WaypointViewModel) {
+    fun SlidingToolbar(
+        waypointVm: WaypointViewModel,
+    ) {
         val density = LocalDensity.current
 
         val screenWidth = LocalWindowInfo.current.containerSize.width
@@ -546,7 +571,7 @@ class WaypointActivity : ComponentActivity() {
                                 .fillMaxSize(),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.SpaceAround,
-                            ) {
+                        ) {
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_add,
                                 flagMode = FlagMode.ADD,
@@ -570,10 +595,11 @@ class WaypointActivity : ComponentActivity() {
                                 }
                             )
                             IconWithEffectButton(
-                                drawableId = R.drawable.start,
-                                flagMode = FlagMode.START,
+                                drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
+                                flagMode = FlagMode.SHIPMOVE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(FlagMode.START)
+                                    waypointVm.toggleFlagEditMode(FlagMode.SHIPMOVE)
+                                    waypointVm.toggleSimulation()
                                 }
                             )
                         }

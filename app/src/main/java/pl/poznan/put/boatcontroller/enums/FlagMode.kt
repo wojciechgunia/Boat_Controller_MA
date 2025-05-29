@@ -4,5 +4,5 @@ enum class FlagMode {
     ADD,
     REMOVE,
     MOVE,
-    START
+    SHIPMOVE
 }
