@@ -3,13 +3,21 @@ package pl.poznan.put.boatcontroller.dataclass
 data class WaypointObject(
     var id: Int,
     val lon: Double,
-    val lat: Double
+    val lat: Double,
+    var isCompleted: Boolean = false
 )
 
-data class ShipUpdateMessage(
-    val type: String,
-    val ship: ShipPosition,
-)
+open class BaseMessage(val type: String)
+
+data class PositionMessage(
+    val ship: ShipPosition
+) : BaseMessage("POSITION")
+
+data class CompletedWaypointMessage(
+    val flags: List<WaypointObject>
+) : BaseMessage("COMPLETED_WAYPOINT")
+
+object FinishedMessage : BaseMessage("FINISHED")
 
 data class ShipPosition(
     val lat: Double,

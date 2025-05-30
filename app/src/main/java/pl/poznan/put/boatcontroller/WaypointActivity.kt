@@ -96,11 +96,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.maps.MapLibreMap
-import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
-    val cameraZoomAnimationTime = 2 // Czas animacji zoomowania kamery w sekundach
+    val cameraZoomAnimationTime = 2
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -352,13 +351,6 @@ class WaypointActivity : ComponentActivity() {
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
 
-                        val startWaypoint = WaypointObject(
-                            0,
-                            waypointVm.shipPosition.value.lon,
-                            waypointVm.shipPosition.value.lat
-                        )
-                        waypointVm.flagPositions.add(startWaypoint)
-
                         mapboxMap.addOnMapClickListener { latLng ->
                             val mode = waypointVm.flagMode
                             Log.d("FLAGMODE", "Current mode: $mode")
@@ -423,14 +415,16 @@ class WaypointActivity : ComponentActivity() {
                                             val id = clickedFeature.getStringProperty("id")
                                                 ?.toIntOrNull()
                                             if (id != null) {
-                                                waypointVm.flagToMoveId = id
-                                                val bitmap = waypointVm.flagBitmaps[id]!!
-                                                val selectedBitmap =
-                                                    bitmap.scale(
-                                                        (bitmap.width * 1.2f).toInt(),
-                                                        (bitmap.height * 1.2f).toInt()
-                                                    )
-                                                style.addImage("flag-icon-$id", selectedBitmap)
+                                                if(waypointVm.getWaypointById(id)?.isCompleted == false) {
+                                                    waypointVm.flagToMoveId = id
+                                                    val bitmap = waypointVm.flagBitmaps[id]!!
+                                                    val selectedBitmap =
+                                                        bitmap.scale(
+                                                            (bitmap.width * 1.2f).toInt(),
+                                                            (bitmap.height * 1.2f).toInt()
+                                                        )
+                                                    style.addImage("flag-icon-$id", selectedBitmap)
+                                                }
                                             }
                                         }
                                         true
@@ -578,21 +572,24 @@ class WaypointActivity : ComponentActivity() {
                                 onClick = {
 //                                    waypointVm.setFlagEditMode(FlagMode.ADD)
                                     waypointVm.toggleFlagEditMode(FlagMode.ADD)
-                                }
+                                },
+                                isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_delete,
                                 flagMode = FlagMode.REMOVE,
                                 onClick = {
                                     waypointVm.toggleFlagEditMode(FlagMode.REMOVE)
-                                }
+                                },
+                                isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_move,
                                 flagMode = FlagMode.MOVE,
                                 onClick = {
                                     waypointVm.toggleFlagEditMode(FlagMode.MOVE)
-                                }
+                                },
+                                isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
@@ -600,7 +597,7 @@ class WaypointActivity : ComponentActivity() {
                                 onClick = {
                                     waypointVm.toggleFlagEditMode(FlagMode.SHIPMOVE)
                                     waypointVm.toggleSimulation()
-                                }
+                                },
                             )
                         }
                     }
@@ -629,10 +626,22 @@ class WaypointActivity : ComponentActivity() {
     fun IconWithEffectButton(
         drawableId: Int,
         flagMode: FlagMode?,
-        onClick: () -> Unit
+        onClick: () -> Unit,
+        isEnabled: Boolean = true
     ) {
-        val borderColor = if (flagMode == waypointVm.flagMode) Color.Green else Color.Transparent
-        val shadowColor = if (flagMode == waypointVm.flagMode) Color.Green else Color.Transparent
+        val borderColor = when {
+            !isEnabled -> colorResource(id = R.color.DARK_RED)
+            isEnabled && flagMode == waypointVm.flagMode -> Color.Green
+            isEnabled && flagMode != waypointVm.flagMode -> Color.Transparent
+            else -> Color.Transparent
+        }
+
+        val shadowColor = when {
+            !isEnabled -> colorResource(id = R.color.DARK_RED)
+            isEnabled && flagMode == waypointVm.flagMode -> Color.Green
+            isEnabled && flagMode != waypointVm.flagMode -> Color.Transparent
+            else -> Color.Transparent
+        }
 
         IconButton(
             onClick = onClick,
@@ -646,7 +655,8 @@ class WaypointActivity : ComponentActivity() {
                 )
                 .border(width = 2.dp, color = borderColor, shape = CircleShape)
                 .clip(CircleShape)
-                .background(Color.DarkGray)
+                .background(Color.DarkGray),
+            enabled = isEnabled
         ) {
             Icon(
                 painter = painterResource(drawableId),

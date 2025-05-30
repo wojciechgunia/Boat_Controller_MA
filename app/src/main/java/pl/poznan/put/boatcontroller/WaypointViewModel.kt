@@ -13,6 +13,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -20,17 +21,24 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import pl.poznan.put.boatcontroller.dataclass.BaseMessage
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
+import pl.poznan.put.boatcontroller.dataclass.CompletedWaypointMessage
+import pl.poznan.put.boatcontroller.dataclass.FinishedMessage
+import pl.poznan.put.boatcontroller.dataclass.PositionMessage
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
-import pl.poznan.put.boatcontroller.dataclass.ShipUpdateMessage
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.FlagMode
 import pl.poznan.put.boatcontroller.location_api.WaypointSocketClient
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var isToolbarOpened by mutableStateOf(false)
+    var waypointStartCoordinates = ShipPosition(52.404633, 16.957722)
 
-    private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
+    private var _waypointStartPosition = mutableStateOf<WaypointObject>(WaypointObject(0, waypointStartCoordinates.lon, waypointStartCoordinates.lat))
+    val waypointStartPosition: MutableState<WaypointObject> = _waypointStartPosition
+
+    private val _shipPosition = mutableStateOf<ShipPosition>(waypointStartCoordinates)
     val shipPosition: MutableState<ShipPosition> = _shipPosition
 
     private val _flagBitmaps = mutableStateMapOf<Int, Bitmap>()
@@ -52,6 +60,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
     val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
+    init {
+        addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
+    }
+
     fun startShipSimulation() {
         val flags = flagPositions.sortedBy { it.id }
         if (flags.isEmpty()) return
@@ -61,18 +73,22 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             "192.168.1.4",
             2137,
             onGetMessage = { serverMessage ->
-                val update = parseServerMessage(serverMessage)
-                update?.let {
-                    if (it.type == "POSITION") {
-                        moveFlag(0, it.ship.lon, it.ship.lat)
-                        _shipPosition.value = ShipPosition(it.ship.lat, it.ship.lon)
+                when (val update = parseServerMessage(serverMessage)) {
+                    is PositionMessage -> {
+                        _shipPosition.value = ShipPosition(update.ship.lat, update.ship.lon)
+//                        Log.d("POSITION_ZERO", "Pozycja poczatkowa: ${waypointStartPosition.value.lat}, ${waypointStartPosition.value.lon}")
+//                        Log.d("POSITION_SHIP", "Pozycja statku: ${update.ship.lat}, ${update.ship.lon}")
                     }
-                    else if (it.type == "FINISHED") {
+                    is CompletedWaypointMessage -> {
+                        update.flags.forEach { updatedFlag ->
+                            flagPositions.find { it.id == updatedFlag.id }?.isCompleted = updatedFlag.isCompleted
+                        }
+                    }
+                    is FinishedMessage -> {
                         onSimulationFinished()
                         Log.d("FINISHED", "Ukończono trasę!")
-                    }
-                    else {
-                        Log.w("Socket", "Nieznany typ wiadomości: ${it.type}")
+                    } else -> {
+                        Log.w("Socket", "Nieznany typ wiadomości: ${update?.type}")
                     }
                 }
             }
@@ -107,7 +123,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun buildJsonShipPayload(): String {
         val flagsJson = flagPositions.sortedBy { it.id }.joinToString(",") {
-            """{"id":${it.id},"lat":${it.lat},"lon":${it.lon}}"""
+            """{"id":${it.id},"lat":${it.lat},"lon":${it.lon},"isCompleted":${it.isCompleted}}"""
         }
 
         val ship = shipPosition.value
@@ -120,16 +136,30 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     """.trimIndent() + "\n"
     }
 
-    fun parseServerMessage(json: String): ShipUpdateMessage? {
+    fun parseServerMessage(rawJson: String): BaseMessage? {
         return try {
-            Gson().fromJson(json, ShipUpdateMessage::class.java)
+            val jsonObject = JsonParser.parseString(rawJson).asJsonObject
+            val type = jsonObject["type"].asString
+
+            val gson = Gson()
+
+            when (type) {
+                "POSITION" -> gson.fromJson(rawJson, PositionMessage::class.java)
+                "COMPLETED_WAYPOINT" -> gson.fromJson(rawJson, CompletedWaypointMessage::class.java)
+                "FINISHED" -> FinishedMessage
+                else -> {
+                    Log.w("Socket", "Nieznany typ wiadomości: $type")
+                    null
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
     }
-
     private fun onSimulationFinished() {
+        _flagPositions.clear()
+        addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
         _isShipMoving.value = false
         shipMovingJob?.cancel()
         shipMovingJob = null
@@ -139,7 +169,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getNextAvailableId(): Int {
         val usedIds = _flagPositions.map { it.id }.toSet()
-        var id = 1
+        var id = 0
         while (id in usedIds) {
             id++
         }
@@ -177,6 +207,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 wp.id -= 1
             }
         }
+    }
+
+    fun getWaypointById(id: Int): WaypointObject? {
+        return flagPositions.find { it.id == id }
     }
 
 //    fun setFlagEditMode(mode: FlagMode?) {
