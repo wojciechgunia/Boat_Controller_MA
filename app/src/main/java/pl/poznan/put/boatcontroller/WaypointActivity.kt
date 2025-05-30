@@ -96,6 +96,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.Point
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
@@ -238,24 +240,6 @@ class WaypointActivity : ComponentActivity() {
                               "type": "raster",
                               "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
                               "tileSize": 256
-                            },
-                            "ship-source": {
-                              "type": "geojson",
-                              "data": {
-                                "type": "FeatureCollection",
-                                "features": [
-                                  {
-                                    "type": "Feature",
-                                    "geometry": {
-                                      "type": "Point",
-                                      "coordinates": [${waypointVm.shipPosition.value.lon}, ${waypointVm.shipPosition.value.lat}]
-                                    },
-                                    "properties": {
-                                      "title": "Ship"
-                                    }
-                                  }
-                                ]
-                              }
                             }
                           },
                           "layers": [
@@ -263,16 +247,6 @@ class WaypointActivity : ComponentActivity() {
                               "id": "osm-layer",
                               "type": "raster",
                               "source": "osm"
-                            },
-                            {
-                              "id": "ship-layer",
-                              "type": "symbol",
-                              "source": "ship-source",
-                              "layout": {
-                                "icon-image": "ship-icon",
-                                "icon-size": 0.07,
-                                "icon-allow-overlap": true
-                              }
                             }
                           ]
                         }
@@ -290,7 +264,30 @@ class WaypointActivity : ComponentActivity() {
 
                     mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                         style.addImage("ship-icon", shipBitmap)
+                        val shipCoordinates = Point.fromLngLat(
+                            waypointVm.shipPosition.value.lon,
+                            waypointVm.shipPosition.value.lat
+                        )
 
+                        val shipFeature = Feature.fromGeometry(shipCoordinates).apply {
+                            addStringProperty("title", "Ship")
+                        }
+
+                        val shipSource = GeoJsonSource(
+                            "ship-source",
+                            FeatureCollection.fromFeatures(listOf(shipFeature))
+                        )
+
+                        style.addSource(shipSource)
+
+                        val shipLayer = SymbolLayer("ship-layer", "ship-source")
+                            .withProperties(
+                                iconImage("ship-icon"),
+                                iconSize(0.07f),
+                                iconAllowOverlap(true)
+                            )
+
+                        style.addLayer(shipLayer)
                         val flagsSource = GeoJsonSource(
                             "flags-source",
                             FeatureCollection.fromFeatures(emptyArray())
@@ -350,6 +347,7 @@ class WaypointActivity : ComponentActivity() {
                         }
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
+                        waypointVm.updateMapSources(flagsSource, linesSource, shipSource)
 
                         mapboxMap.addOnMapClickListener { latLng ->
                             val mode = waypointVm.flagMode
@@ -597,6 +595,14 @@ class WaypointActivity : ComponentActivity() {
                                 onClick = {
                                     waypointVm.toggleFlagEditMode(FlagMode.SHIPMOVE)
                                     waypointVm.toggleSimulation()
+                                },
+                            )
+                            IconWithEffectButton(
+                                drawableId = R.drawable.back_to_home,
+                                flagMode = FlagMode.QUIT,
+                                onClick = {
+                                    waypointVm.stopShipSimulation()
+                                    finish()
                                 },
                             )
                         }

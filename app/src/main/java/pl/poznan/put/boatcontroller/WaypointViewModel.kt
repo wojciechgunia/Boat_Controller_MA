@@ -35,9 +35,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var isToolbarOpened by mutableStateOf(false)
     var waypointStartCoordinates = ShipPosition(52.404633, 16.957722)
 
-    private var _waypointStartPosition = mutableStateOf<WaypointObject>(WaypointObject(0, waypointStartCoordinates.lon, waypointStartCoordinates.lat))
-    val waypointStartPosition: MutableState<WaypointObject> = _waypointStartPosition
-
     private val _shipPosition = mutableStateOf<ShipPosition>(waypointStartCoordinates)
     val shipPosition: MutableState<ShipPosition> = _shipPosition
 
