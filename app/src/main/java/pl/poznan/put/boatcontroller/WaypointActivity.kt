@@ -90,7 +90,6 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
-import pl.poznan.put.boatcontroller.enums.FlagMode
 import androidx.core.graphics.scale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -98,6 +97,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
+import pl.poznan.put.boatcontroller.enums.ShipDirection
+import pl.poznan.put.boatcontroller.enums.WaypointMode
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
@@ -350,10 +351,10 @@ class WaypointActivity : ComponentActivity() {
                         waypointVm.updateMapSources(flagsSource, linesSource, shipSource)
 
                         mapboxMap.addOnMapClickListener { latLng ->
-                            val mode = waypointVm.flagMode
+                            val mode = waypointVm.waypointMode
                             Log.d("FLAGMODE", "Current mode: $mode")
                             when (mode) {
-                                FlagMode.ADD -> {
+                                WaypointMode.FLAG_ADD -> {
                                     val newWaypoint = waypointVm.addFlag(
                                         latLng.longitude,
                                         latLng.latitude
@@ -374,7 +375,7 @@ class WaypointActivity : ComponentActivity() {
                                     true
                                 }
 
-                                FlagMode.REMOVE -> {
+                                WaypointMode.FLAG_DELETE -> {
                                     val screenPoint =
                                         mapboxMap.projection.toScreenLocation(latLng)
 
@@ -398,7 +399,7 @@ class WaypointActivity : ComponentActivity() {
                                     }
                                 }
 
-                                FlagMode.MOVE -> {
+                                WaypointMode.FLAG_MOVE -> {
                                     val movingId = waypointVm.flagToMoveId
                                     if (movingId == null) {
                                         val screenPoint =
@@ -566,44 +567,45 @@ class WaypointActivity : ComponentActivity() {
                         ) {
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_add,
-                                flagMode = FlagMode.ADD,
+                                waypointMode = WaypointMode.FLAG_ADD,
                                 onClick = {
-//                                    waypointVm.setFlagEditMode(FlagMode.ADD)
-                                    waypointVm.toggleFlagEditMode(FlagMode.ADD)
+//                                    waypointVm.setFlagEditMode(WaypointMode.FLAG_ADD)
+                                    waypointVm.toggleFlagEditMode(WaypointMode.FLAG_ADD)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_delete,
-                                flagMode = FlagMode.REMOVE,
+                                waypointMode = WaypointMode.FLAG_DELETE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(FlagMode.REMOVE)
+                                    waypointVm.toggleFlagEditMode(WaypointMode.FLAG_DELETE)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_move,
-                                flagMode = FlagMode.MOVE,
+                                waypointMode = WaypointMode.FLAG_MOVE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(FlagMode.MOVE)
+                                    waypointVm.toggleFlagEditMode(WaypointMode.FLAG_MOVE)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
-                                flagMode = FlagMode.SHIPMOVE,
+                                waypointMode = WaypointMode.SHIP_DEFAULT_MOVE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(FlagMode.SHIPMOVE)
+                                    waypointVm.toggleFlagEditMode(WaypointMode.SHIP_DEFAULT_MOVE)
                                     waypointVm.toggleSimulation()
                                 },
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.back_to_home,
-                                flagMode = FlagMode.QUIT,
+                                waypointMode = WaypointMode.SHIP_REVERSE_MOVE,
                                 onClick = {
-                                    waypointVm.stopShipSimulation()
-                                    finish()
+                                    waypointVm.currentShipDirection.value = ShipDirection.REVERSE
+                                    waypointVm.startShipSimulation()
                                 },
+                                isEnabled = waypointVm.currentShipDirection.value == ShipDirection.DEFAULT
                             )
                         }
                     }
@@ -631,21 +633,21 @@ class WaypointActivity : ComponentActivity() {
     @Composable
     fun IconWithEffectButton(
         drawableId: Int,
-        flagMode: FlagMode?,
+        waypointMode: WaypointMode?,
         onClick: () -> Unit,
         isEnabled: Boolean = true
     ) {
         val borderColor = when {
             !isEnabled -> colorResource(id = R.color.DARK_RED)
-            isEnabled && flagMode == waypointVm.flagMode -> Color.Green
-            isEnabled && flagMode != waypointVm.flagMode -> Color.Transparent
+            isEnabled && waypointMode == waypointVm.waypointMode -> Color.Green
+            isEnabled && waypointMode != waypointVm.waypointMode -> Color.Transparent
             else -> Color.Transparent
         }
 
         val shadowColor = when {
             !isEnabled -> colorResource(id = R.color.DARK_RED)
-            isEnabled && flagMode == waypointVm.flagMode -> Color.Green
-            isEnabled && flagMode != waypointVm.flagMode -> Color.Transparent
+            isEnabled && waypointMode == waypointVm.waypointMode -> Color.Green
+            isEnabled && waypointMode != waypointVm.waypointMode -> Color.Transparent
             else -> Color.Transparent
         }
 
@@ -654,7 +656,7 @@ class WaypointActivity : ComponentActivity() {
             modifier = Modifier
                 .size(48.dp)
                 .shadow(
-                    elevation = if (flagMode == waypointVm.flagMode) 8.dp else 0.dp,
+                    elevation = if (waypointMode == waypointVm.waypointMode) 8.dp else 0.dp,
                     shape = CircleShape,
                     ambientColor = shadowColor,
                     spotColor = shadowColor

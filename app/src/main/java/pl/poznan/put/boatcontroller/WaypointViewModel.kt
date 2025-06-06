@@ -28,7 +28,8 @@ import pl.poznan.put.boatcontroller.dataclass.FinishedMessage
 import pl.poznan.put.boatcontroller.dataclass.PositionMessage
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
-import pl.poznan.put.boatcontroller.enums.FlagMode
+import pl.poznan.put.boatcontroller.enums.ShipDirection
+import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.location_api.WaypointSocketClient
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
@@ -38,17 +39,20 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _shipPosition = mutableStateOf<ShipPosition>(waypointStartCoordinates)
     val shipPosition: MutableState<ShipPosition> = _shipPosition
 
+    private var _currentShipDirection = mutableStateOf<ShipDirection>(ShipDirection.DEFAULT)
+    var currentShipDirection: MutableState<ShipDirection> = _currentShipDirection
+
     private val _flagBitmaps = mutableStateMapOf<Int, Bitmap>()
     val flagBitmaps: Map<Int, Bitmap> = _flagBitmaps
 
-    private val _flagPositions = mutableStateListOf<WaypointObject>()
+    private var _flagPositions = mutableStateListOf<WaypointObject>()
     var flagPositions: SnapshotStateList<WaypointObject> = _flagPositions
 
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
 
     var flagToMoveId: Int? by mutableStateOf(null)
-    var flagMode by mutableStateOf<FlagMode?>(null)
+    var waypointMode by mutableStateOf<WaypointMode?>(null)
         private set
 
     private var shipMovingJob: Job? = null
@@ -128,7 +132,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         {
             "type": "START",
             "ship": {"lat": ${ship.lat}, "lon": ${ship.lon}},
-            "flags": [$flagsJson]
+            "flags": [$flagsJson],
+            "direction": "${currentShipDirection.value}"
         }
     """.trimIndent() + "\n"
     }
@@ -154,10 +159,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             null
         }
     }
+
     private fun onSimulationFinished() {
         _flagPositions.clear()
         addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
         _isShipMoving.value = false
+        _currentShipDirection.value = ShipDirection.DEFAULT
         shipMovingJob?.cancel()
         shipMovingJob = null
         socketClient?.disconnect()
@@ -211,11 +218,11 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
 //    fun setFlagEditMode(mode: FlagMode?) {
-//        flagMode = mode
+//        waypointMode = mode
 //    }
 
-    fun toggleFlagEditMode(mode: FlagMode?) {
-        flagMode = if(flagMode != mode && mode != null) {
+    fun toggleFlagEditMode(mode: WaypointMode?) {
+        waypointMode = if(waypointMode != mode && mode != null) {
             mode
         } else {
             null
