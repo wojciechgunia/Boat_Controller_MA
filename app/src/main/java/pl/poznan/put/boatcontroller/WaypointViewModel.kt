@@ -11,6 +11,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.JsonParser
@@ -30,7 +32,6 @@ import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
-import pl.poznan.put.boatcontroller.location_api.WaypointSocketClient
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var isToolbarOpened by mutableStateOf(false)
@@ -56,48 +57,63 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private var shipMovingJob: Job? = null
-    private var socketClient: WaypointSocketClient? = null
 
     private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
     val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
+    private val _shouldFinish = MutableLiveData<Boolean>(false)
+    val shouldFinish: LiveData<Boolean> = _shouldFinish
+
+    fun initSocket() {
+        SocketClientManager.setOnMessageReceivedListener { message ->
+            handleServerMessage(message)
+        }
+    }
+
     init {
+        initSocket()
+        SocketClientManager.setOnLoginStatusChangedListener { loggedIn ->
+            if (!loggedIn) {
+                stopShipSimulation()
+                onSimulationFinished()
+                _shouldFinish.postValue(true)
+            }
+        }
         addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
+    }
+
+    fun handleServerMessage(message: String) {
+        when (val update = parseServerMessage(message)) {
+            is PositionMessage -> {
+                _shipPosition.value = ShipPosition(update.ship.lat, update.ship.lon)
+            }
+
+            is CompletedWaypointMessage -> {
+                update.flags.forEach { updatedFlag ->
+                    flagPositions.find { it.id == updatedFlag.id }?.isCompleted = updatedFlag.isCompleted
+                }
+            }
+
+            is FinishedMessage -> {
+                Log.d("SOCKET", "FINISHED od serwera – zatrzymuję symulację")
+                onSimulationFinished()
+            }
+
+            else -> {
+                Log.w("SOCKET", "Nieznany typ wiadomości: ${update?.type}")
+            }
+        }
     }
 
     fun startShipSimulation() {
         val flags = flagPositions.sortedBy { it.id }
         if (flags.isEmpty()) return
-        val message = buildJsonShipPayload()
 
-        socketClient = WaypointSocketClient(
-            "192.168.1.4",
-            2137,
-            onGetMessage = { serverMessage ->
-                when (val update = parseServerMessage(serverMessage)) {
-                    is PositionMessage -> {
-                        _shipPosition.value = ShipPosition(update.ship.lat, update.ship.lon)
-//                        Log.d("POSITION_ZERO", "Pozycja poczatkowa: ${waypointStartPosition.value.lat}, ${waypointStartPosition.value.lon}")
-//                        Log.d("POSITION_SHIP", "Pozycja statku: ${update.ship.lat}, ${update.ship.lon}")
-                    }
-                    is CompletedWaypointMessage -> {
-                        update.flags.forEach { updatedFlag ->
-                            flagPositions.find { it.id == updatedFlag.id }?.isCompleted = updatedFlag.isCompleted
-                        }
-                    }
-                    is FinishedMessage -> {
-                        onSimulationFinished()
-                        Log.d("FINISHED", "Ukończono trasę!")
-                    } else -> {
-                        Log.w("Socket", "Nieznany typ wiadomości: ${update?.type}")
-                    }
-                }
-            }
-        )
+        val message = buildJsonShipPayload()
 
         shipMovingJob = viewModelScope.launch {
             try {
-                socketClient?.connectAndSend(message)
+                SocketClientManager.sendMessage(message)
                 _isShipMoving.value = true
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -108,10 +124,14 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun stopShipSimulation() {
-        socketClient?.disconnect()
         shipMovingJob?.cancel()
         shipMovingJob = null
         _isShipMoving.value = false
+        SocketClientManager.sendMessage("""
+        {
+            "type": "STOP"
+        }
+        """.trimIndent() + "\n")
     }
 
     fun toggleSimulation() {
@@ -160,15 +180,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun onSimulationFinished() {
+    fun onSimulationFinished() {
         _flagPositions.clear()
         addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
         _isShipMoving.value = false
         _currentShipDirection.value = ShipDirection.DEFAULT
         shipMovingJob?.cancel()
         shipMovingJob = null
-        socketClient?.disconnect()
-        socketClient = null
     }
 
     fun getNextAvailableId(): Int {

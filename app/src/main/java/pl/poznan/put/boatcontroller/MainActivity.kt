@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +37,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -56,9 +54,7 @@ import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.PrintWriter
-import java.net.HttpURLConnection
 import java.net.Socket
-import java.net.URL
 
 class MainActivity : ComponentActivity() {
     private val mainVm by viewModels<MainViewModel>()
@@ -129,7 +125,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                 "Waypoint",
                 R.drawable.bc_waypoint,
                 navController,
-//                mainVm.isLoggedIn,
+                mainVm.isLoggedIn,
                 navDest = "waypoint",
             )
         }
@@ -152,7 +148,7 @@ fun MenuButton(
                 navController.navigate(navDest)
             } else if (navDest != null && navDest == "disconnect") {
                 if (mainVm != null) {
-                    mainVm.socketClose()
+                    mainVm.logout()
                     mainVm.updateLoggedIn(false)
                 }
             } else if (navDest != null && navDest == "waypoint") {
@@ -373,7 +369,6 @@ suspend fun loginToServer(
 ): Boolean {
     return try {
         val socket = Socket(ip, port.toInt())
-
         val output = PrintWriter(socket.getOutputStream(), true)
         val input = BufferedReader(InputStreamReader(socket.getInputStream()))
 
@@ -385,17 +380,13 @@ suspend fun loginToServer(
         if (response?.trim() == "Permission granted") {
             mainVm.updateSocket(socket)
         }
-        when (response?.trim()) {
-            "Permission granted" -> true
-            "Permission denied" -> false
-            else -> false
-        }
+
+        response?.trim() == "Permission granted"
     } catch (e: Exception) {
         e.printStackTrace()
         false
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable

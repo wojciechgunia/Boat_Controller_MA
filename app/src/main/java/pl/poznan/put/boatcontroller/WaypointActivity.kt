@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.core.animateDpAsState
@@ -94,6 +95,10 @@ import androidx.core.graphics.scale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
@@ -109,6 +114,20 @@ class WaypointActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             val colorScheme = MaterialTheme.colorScheme
+
+            waypointVm.shouldFinish.observe(this) { shouldFinish ->
+                if (shouldFinish == true) {
+                    finish()
+                }
+            }
+
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    waypointVm.stopShipSimulation()
+                    waypointVm.onSimulationFinished()
+                    finish()
+                }
+            })
 
             MapLibre.getInstance(
                 applicationContext
@@ -167,7 +186,7 @@ class WaypointActivity : ComponentActivity() {
             FloatingActionButton(
                 onClick = {
                     val shipPosition = waypointVm.shipPosition.value
-                    val zoom = 13.0
+                    val zoom = 16.0
                     mapLibreMapState.value?.animateCamera(
                         CameraUpdateFactory.newLatLngZoom(
                             LatLng(
@@ -603,7 +622,12 @@ class WaypointActivity : ComponentActivity() {
                                 waypointMode = WaypointMode.SHIP_REVERSE_MOVE,
                                 onClick = {
                                     waypointVm.currentShipDirection.value = ShipDirection.REVERSE
-                                    waypointVm.startShipSimulation()
+                                    waypointVm.stopShipSimulation()
+
+                                    CoroutineScope(Dispatchers.Main).launch {
+                                        delay(300)
+                                        waypointVm.startShipSimulation()
+                                    }
                                 },
                                 isEnabled = waypointVm.currentShipDirection.value == ShipDirection.DEFAULT
                             )
