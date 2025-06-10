@@ -100,7 +100,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             else -> {
-                Log.w("SOCKET", "Nieznany typ wiadomości: ${update?.type}")
+                Log.w("SOCKET", "Ta wiadomość nie dotyczy sterowania waypointami: ${update?.type}")
             }
         }
     }

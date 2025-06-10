@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name" translatable="false">Boat Controller</string>
+    <string name="title_activity_vrcam">VRCamActivity</string>
 </resources>

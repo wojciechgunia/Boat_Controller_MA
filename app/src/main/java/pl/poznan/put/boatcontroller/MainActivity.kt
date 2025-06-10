@@ -119,8 +119,20 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                 )
             }
 
-            MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn)
-            MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
+            MenuButton(
+                "Controller",
+                R.drawable.bc_controller,
+                navController,
+                mainVm.isLoggedIn,
+                navDest = "controller",
+            )
+            MenuButton(
+                "VR Cam",
+                R.drawable.bc_vr,
+                navController,
+                mainVm.isLoggedIn,
+                navDest = "vrcam",
+            )
             MenuButton(
                 "Waypoint",
                 R.drawable.bc_waypoint,
@@ -144,15 +156,26 @@ fun MenuButton(
     val context = LocalContext.current
     Button(
         onClick = {
-            if (navDest != null && navDest == "connection") {
-                navController.navigate(navDest)
-            } else if (navDest != null && navDest == "disconnect") {
-                if (mainVm != null) {
-                    mainVm.logout()
-                    mainVm.updateLoggedIn(false)
+            if (navDest != null) {
+                if (navDest == "connection") {
+                    navController.navigate(navDest)
                 }
-            } else if (navDest != null && navDest == "waypoint") {
-                context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                else if (navDest == "disconnect") {
+                    if (mainVm != null) {
+                        mainVm.logout()
+                        mainVm.updateLoggedIn(false)
+                    }
+                }
+                else if (navDest == "controller") {
+                    // TODO: Zamiana nawigacji na startActivity kontrolera
+                    navController.navigate("connection")
+                }
+                else if (navDest == "vrcam") {
+                    context.startActivity(Intent(context, VRCamActivity::class.java), null)
+                }
+                else if (navDest == "waypoint") {
+                    context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                }
             }
         },
         modifier = Modifier
