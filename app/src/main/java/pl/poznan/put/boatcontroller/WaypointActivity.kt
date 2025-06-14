@@ -79,6 +79,7 @@ import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.FeatureCollection
+import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import androidx.core.graphics.createBitmap
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.style.expressions.Expression.get
@@ -103,53 +104,49 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
-import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
-import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
     val cameraZoomAnimationTime = 2
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
         setContent {
-            BoatControllerTheme {
-                val context = LocalContext.current
-                val colorScheme = MaterialTheme.colorScheme
+            val context = LocalContext.current
+            val colorScheme = MaterialTheme.colorScheme
 
-                waypointVm.shouldFinish.observe(this) { shouldFinish ->
-                    if (shouldFinish == true) {
-                        finish()
-                    }
+            waypointVm.shouldFinish.observe(this) { shouldFinish ->
+                if (shouldFinish == true) {
+                    finish()
                 }
+            }
 
-                onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-                    override fun handleOnBackPressed() {
-                        waypointVm.stopShipSimulation()
-                        waypointVm.onSimulationFinished()
-                        finish()
-                    }
-                })
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    waypointVm.stopShipSimulation()
+                    waypointVm.onSimulationFinished()
+                    waypointVm.sendMessage("SCM:MEN")
+                    finish()
+                }
+            })
 
-                MapLibre.getInstance(
-                    applicationContext
+            MapLibre.getInstance(
+                applicationContext
+            )
+//            Log.d("WAYPOINTS", waypointVm.flagPositions.toString())
+            val image = remember {
+                ResourcesCompat.getDrawable(
+                    context.resources,
+                    R.drawable.phone_android_2,
+                    context.theme
                 )
-                //            Log.d("WAYPOINTS", waypointVm.flagPositions.toString())
-                val image = remember {
-                    ResourcesCompat.getDrawable(
-                        context.resources,
-                        R.drawable.phone_android_2,
-                        context.theme
-                    )
-                        ?.toBitmap()
-                        ?.asImageBitmap()
-                }
-                if (!isLandscape()) {
-                    RotatePhoneAnimation(colorScheme, image)
-                } else {
-                    WaypointControlScreen(waypointVm)
-                }
+                    ?.toBitmap()
+                    ?.asImageBitmap()
+            }
+            if (!isLandscape()) {
+                RotatePhoneAnimation(colorScheme, image)
+            } else {
+                WaypointControlScreen(waypointVm)
             }
         }
     }
@@ -168,7 +165,6 @@ class WaypointActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             snapshotFlow { waypointVm.flagPositions.toList() to shipPos.value }
                 .collect {
-                    val (flags, ship) = it
                     val flagsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("flags-source")
                     val linesSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("lines-source")
                     val shipSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("ship-source")
@@ -625,7 +621,7 @@ class WaypointActivity : ComponentActivity() {
                                 drawableId = R.drawable.back_to_home,
                                 waypointMode = WaypointMode.SHIP_REVERSE_MOVE,
                                 onClick = {
-                                    waypointVm.currentShipDirection.value = ShipDirection.REVERSE
+                                    waypointVm.goToHome()
                                     waypointVm.stopShipSimulation()
 
                                     CoroutineScope(Dispatchers.Main).launch {

@@ -185,6 +185,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 navController,
                                 mainVm.isLoggedIn,
                                 navDest = "waypoint",
+                                mainVm = mainVm,
                             )
                         }
                     }
@@ -231,6 +232,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                       navController,
                       mainVm.isLoggedIn,
                       navDest = "waypoint",
+                      mainVm = mainVm,
                   )
                 }
             }
@@ -258,11 +260,14 @@ fun MenuButton(
                     mainVm.updateLoggedIn(false)
                 }
             } else if (navDest != null && navDest == "waypoint") {
-                context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                if (mainVm != null) {
+                    mainVm.sendMessage("SCM:WPS")
+                    context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                }
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, ControllerActivity::class.java), null)
                     mainVm.sendMessage("SCM:MAP")
+                    context.startActivity(Intent(context, ControllerActivity::class.java), null)
                 }
             }
         },

@@ -2,7 +2,6 @@ package pl.poznan.put.boatcontroller
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -14,8 +13,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.google.gson.Gson
-import com.google.gson.JsonParser
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -23,11 +20,7 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
-import pl.poznan.put.boatcontroller.dataclass.BaseMessage
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
-import pl.poznan.put.boatcontroller.dataclass.CompletedWaypointMessage
-import pl.poznan.put.boatcontroller.dataclass.FinishedMessage
-import pl.poznan.put.boatcontroller.dataclass.PositionMessage
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.ShipDirection
@@ -83,25 +76,25 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun handleServerMessage(message: String) {
-        when (val update = parseServerMessage(message)) {
-            is PositionMessage -> {
-                _shipPosition.value = ShipPosition(update.ship.lat, update.ship.lon)
-            }
+        if (message.trim().startsWith("SSP:")) {
+            val data = message.substringAfter("SSP:").split(",")
+            val lat = data[0].toDouble()
+            val lon = data[1].toDouble()
+            _shipPosition.value = ShipPosition(lat, lon)
+        }
 
-            is CompletedWaypointMessage -> {
-                update.flags.forEach { updatedFlag ->
-                    flagPositions.find { it.id == updatedFlag.id }?.isCompleted = updatedFlag.isCompleted
-                }
-            }
+        if (message.trim().startsWith("WCW:")) {
+            val data = message.substringAfter("WCW:").split(",")
+            val id = data[0].toInt()
 
-            is FinishedMessage -> {
-                Log.d("SOCKET", "FINISHED od serwera – zatrzymuję symulację")
-                onSimulationFinished()
+            val index = _flagPositions.indexOfFirst { it.id == id }
+            if (index != -1) {
+                _flagPositions[index] = _flagPositions[index].copy(isCompleted = true)
             }
+        }
 
-            else -> {
-                Log.w("SOCKET", "Nieznany typ wiadomości: ${update?.type}")
-            }
+        if (message.trim().startsWith("WFW:")) {
+            onSimulationFinished()
         }
     }
 
@@ -109,11 +102,11 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         val flags = flagPositions.sortedBy { it.id }
         if (flags.isEmpty()) return
 
-        val message = buildJsonShipPayload()
-
         shipMovingJob = viewModelScope.launch {
             try {
+                val message = "WST"
                 SocketClientManager.sendMessage(message)
+                println("Sending via socket: $message")
                 _isShipMoving.value = true
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -127,56 +120,29 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         shipMovingJob?.cancel()
         shipMovingJob = null
         _isShipMoving.value = false
-        SocketClientManager.sendMessage("""
-        {
-            "type": "STOP"
-        }
-        """.trimIndent() + "\n")
+        val message = "WSP"
+        SocketClientManager.sendMessage(message)
+        println("Sending via socket: $message")
     }
 
+    fun goToHome() {
+        val message = "WGH"
+        toggleShipDirection()
+        SocketClientManager.sendMessage(message)
+        println("Sending via socket: $message")
+    }
+
+    fun toggleShipDirection() {
+        _currentShipDirection.value = when (_currentShipDirection.value) {
+            ShipDirection.DEFAULT -> ShipDirection.REVERSE
+            ShipDirection.REVERSE -> ShipDirection.DEFAULT
+        }
+    }
     fun toggleSimulation() {
         if (isShipMoving.value) {
             stopShipSimulation()
         } else {
             startShipSimulation()
-        }
-    }
-
-    private fun buildJsonShipPayload(): String {
-        val flagsJson = flagPositions.sortedBy { it.id }.joinToString(",") {
-            """{"id":${it.id},"lat":${it.lat},"lon":${it.lon},"isCompleted":${it.isCompleted}}"""
-        }
-
-        val ship = shipPosition.value
-        return """
-        {
-            "type": "START",
-            "ship": {"lat": ${ship.lat}, "lon": ${ship.lon}},
-            "flags": [$flagsJson],
-            "direction": "${currentShipDirection.value}"
-        }
-    """.trimIndent() + "\n"
-    }
-
-    fun parseServerMessage(rawJson: String): BaseMessage? {
-        return try {
-            val jsonObject = JsonParser.parseString(rawJson).asJsonObject
-            val type = jsonObject["type"].asString
-
-            val gson = Gson()
-
-            when (type) {
-                "POSITION" -> gson.fromJson(rawJson, PositionMessage::class.java)
-                "COMPLETED_WAYPOINT" -> gson.fromJson(rawJson, CompletedWaypointMessage::class.java)
-                "FINISHED" -> FinishedMessage
-                else -> {
-                    Log.w("Socket", "Nieznany typ wiadomości: $type")
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
         }
     }
 
@@ -208,11 +174,17 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         val id = getNextAvailableId()
         val waypoint = WaypointObject(id, lon, lat)
         _flagPositions.add(waypoint)
+        val message = "WAP:${id}:${lat}:${lon}"
+        SocketClientManager.sendMessage(message)
+        println("Sending via socket: $message")
         return waypoint
     }
 
     fun removeFlag(id: Int) {
         _flagPositions.removeAll { it.id == id }
+        val message = "WDP:${id}"
+        SocketClientManager.sendMessage(message)
+        println("Sending via socket: $message")
         reindexFlags(id)
     }
 
@@ -221,6 +193,9 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         if (index != -1) {
             _flagPositions[index] = _flagPositions[index].copy(lon = newLon, lat = newLat)
         }
+        val message = "WUP:${id}:${newLat}:${newLon}"
+        SocketClientManager.sendMessage(message)
+        println("Sending via socket: $message")
     }
 
     fun reindexFlags(removedId: Int) {
@@ -234,10 +209,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun getWaypointById(id: Int): WaypointObject? {
         return flagPositions.find { it.id == id }
     }
-
-//    fun setFlagEditMode(mode: FlagMode?) {
-//        waypointMode = mode
-//    }
 
     fun toggleFlagEditMode(mode: WaypointMode?) {
         waypointMode = if(waypointMode != mode && mode != null) {
@@ -286,6 +257,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         return lines
+    }
+
+    fun sendMessage(message: String) {
+        SocketClientManager.sendMessage(message)
     }
 
     fun saveCameraPosition(lat: Double, lng: Double, zoom: Double) {
