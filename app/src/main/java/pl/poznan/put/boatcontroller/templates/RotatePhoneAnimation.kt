@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -26,19 +27,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
-import pl.poznan.put.boatcontroller.R
 import kotlin.math.cos
 import kotlin.math.sin
 
 @SuppressLint("UseCompatLoadingForDrawables", "AutoboxingStateCreation")
 @Composable
-fun RotatePhoneTutorialAnimation(colorScheme: ColorScheme, image: ImageBitmap?) {
+fun RotatePhoneAnimation(colorScheme: ColorScheme, image: ImageBitmap?) {
+
     var sweepAngle by remember { mutableFloatStateOf(0f) }
 
     var phoneRotation by remember { mutableFloatStateOf(0f) }
@@ -75,6 +74,7 @@ fun RotatePhoneTutorialAnimation(colorScheme: ColorScheme, image: ImageBitmap?) 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(colorScheme.background)
             .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -137,7 +137,8 @@ fun RotatePhoneTutorialAnimation(colorScheme: ColorScheme, image: ImageBitmap?) 
                 contentDescription = null,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(100.dp)
+                    .size(100.dp),
+                tint = colorScheme.onBackground,
             )
         }
     }

@@ -82,6 +82,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 data[3].toDouble(),
                 data[4].toDouble(),
                 data[5].toDouble())
+            if(data.size > 6) {
+                homePosition = HomePosition(data[6].toDouble(), data[7].toDouble())
+            }
             mapUpdate(latitude, longitude, currentSpeed)
             updateSensorsData(sensorData)
 

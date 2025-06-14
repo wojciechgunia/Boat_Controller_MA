@@ -168,6 +168,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Controller",
                                 R.drawable.bc_controller,
                                 navController,
+                                mainVm.isLoggedIn,
                                 navDest = "controller",
                                 mainVm = mainVm
                             )
@@ -182,7 +183,8 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Waypoint",
                                 R.drawable.bc_waypoint,
                                 navController,
-                                mainVm.isLoggedIn
+                                mainVm.isLoggedIn,
+                                navDest = "waypoint",
                             )
                         }
                     }

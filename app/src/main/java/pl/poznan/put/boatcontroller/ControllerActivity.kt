@@ -15,11 +15,6 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,7 +37,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +47,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,11 +59,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -79,17 +68,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.graphics.drawable.toBitmap
-import kotlinx.coroutines.delay
 import kotlin.getValue
-import kotlin.math.cos
-import kotlin.math.sin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.drawable.toBitmap
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -109,6 +96,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import org.maplibre.android.style.layers.SymbolLayer
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
+import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 import kotlin.math.min
 
@@ -125,7 +113,16 @@ class ControllerActivity: ComponentActivity() {
             BoatControllerTheme {
                 val colorScheme = MaterialTheme.colorScheme
                 if (!isLandscape()) {
-                    RotatePhoneAnimation(colorScheme)
+                    val image = remember {
+                        ResourcesCompat.getDrawable(
+                            this.resources,
+                            R.drawable.phone_android_2,
+                            this.theme
+                        )
+                            ?.toBitmap()
+                            ?.asImageBitmap()
+                    }
+                    RotatePhoneAnimation(colorScheme, image)
                 } else {
                     EngineControlScreen(viewModel)
                 }
@@ -156,117 +153,6 @@ class ControllerActivity: ComponentActivity() {
         val smallestWidthDp = min(widthDp, heightDp)
 
         return smallestWidthDp >= 600
-    }
-
-    // ===========================  Rotation screen ================================================
-    @SuppressLint("UseCompatLoadingForDrawables", "AutoboxingStateCreation")
-    @Composable
-    fun RotatePhoneAnimation(colorScheme: ColorScheme) {
-
-        var sweepAngle by remember { mutableFloatStateOf(0f) }
-
-        var phoneRotation by remember { mutableFloatStateOf(0f) }
-
-        var startPhoneRotation by remember { mutableStateOf(false) }
-
-        LaunchedEffect(Unit) {
-            while (true) {
-                sweepAngle = 0f
-                startPhoneRotation = false
-
-                animate(
-                    initialValue = 0f,
-                    targetValue = 250f,
-                    animationSpec = tween(durationMillis = 4000, easing = LinearOutSlowInEasing)
-                ) { value, _ ->
-                    sweepAngle = value
-                }
-
-                startPhoneRotation = true
-
-                delay(54000)
-            }
-        }
-
-        val phoneRotationAnim by animateFloatAsState(
-            targetValue = if (startPhoneRotation) 90f else 0f,
-            animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-            label = "PhoneRotation"
-        )
-
-        phoneRotation = phoneRotationAnim
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(colorScheme.background)
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Canvas(modifier = Modifier.size(200.dp)) {
-                val strokeWidth = 8.dp.toPx()
-                val radius = size.minDimension / 2 - strokeWidth / 2
-                val center = Offset(size.width / 2, size.height / 2)
-
-                drawArc(
-                    color = colorScheme.onBackground,
-                    startAngle = 10f,
-                    sweepAngle = sweepAngle,
-                    useCenter = false,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                )
-
-                if (sweepAngle > 5f) {
-                    val endAngle = Math.toRadians((20 + sweepAngle).toDouble())
-                    val arrowLength = 20.dp.toPx()
-                    val arrowWidth = 15.dp.toPx()
-
-                    val endX = center.x + radius * cos(endAngle).toFloat()
-                    val endY = center.y + radius * sin(endAngle).toFloat()
-                    val endPoint = Offset(endX, endY)
-
-                    val tangentAngle = endAngle + Math.PI / 2
-
-                    val p1 = endPoint
-                    val p2 = Offset(
-                        (endX - arrowLength * cos(tangentAngle) - arrowWidth * sin(tangentAngle)).toFloat(),
-                        (endY - arrowLength * sin(tangentAngle) + arrowWidth * cos(tangentAngle)).toFloat()
-                    )
-                    val p3 = Offset(
-                        (endX - arrowLength * cos(tangentAngle) + arrowWidth * sin(tangentAngle)).toFloat(),
-                        (endY - arrowLength * sin(tangentAngle) - arrowWidth * cos(tangentAngle)).toFloat()
-                    )
-
-                    drawPath(
-                        path = Path().apply {
-                            moveTo(p1.x, p1.y)
-                            lineTo(p2.x, p2.y)
-                            lineTo(p3.x, p3.y)
-                            close()
-                        },
-                        color = colorScheme.onBackground
-                    )
-                }
-            }
-
-
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .graphicsLayer {
-                        rotationZ = phoneRotation
-                    }
-            ) {
-                Icon(
-                    bitmap = resources.getDrawable(R.drawable.phone_android_2, null).toBitmap().asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(100.dp),
-                    tint = colorScheme.onBackground,
-                )
-            }
-        }
     }
 
     // ===========================  Controller screen ================================================

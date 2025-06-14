@@ -19,11 +19,6 @@ data class CompletedWaypointMessage(
 
 object FinishedMessage : BaseMessage("FINISHED")
 
-data class ShipPosition(
-    val lat: Double,
-    val lon: Double,
-)
-
 data class CameraPositionState(
     val lon: Double,
     val lat: Double,
