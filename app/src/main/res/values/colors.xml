@@ -9,4 +9,6 @@
     <color name="white">#FFFFFFFF</color>
     <color name="backgroundDark">#FF11131b</color>
     <color name="blue">#FF4170A6</color>
+    <color name="BLACK">#FF000000</color>
+    <color name="DARK_RED">#FF4A110D</color>
 </resources>

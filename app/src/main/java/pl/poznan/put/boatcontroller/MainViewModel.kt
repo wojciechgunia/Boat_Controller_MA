@@ -12,26 +12,22 @@ import pl.poznan.put.boatcontroller.data.UserData
 import java.net.Socket
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+
     private val repo = Repository(app.applicationContext)
 
     var serverIp by mutableStateOf("")
         private set
-
     var serverPort by mutableStateOf("")
         private set
-
     var username by mutableStateOf("")
         private set
-
     var password by mutableStateOf("")
         private set
-
     var isRemembered by mutableStateOf(false)
         private set
 
     var isLoggedIn by mutableStateOf<Boolean>(false)
         private set
-
 
     var socket by mutableStateOf<Socket?>(null)
         private set
@@ -124,3 +120,4 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         socket = null
     }
 }
+

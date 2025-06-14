@@ -221,14 +221,18 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         )
                     }
 
-                    MenuButton("Controller", R.drawable.bc_controller, navController, navDest = "controller", mainVm = mainVm)
+                    MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn, navDest = "controller", mainVm = mainVm)
                     MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
-                    MenuButton("Waypoint", R.drawable.bc_waypoint, navController, mainVm.isLoggedIn)
+                    MenuButton(
+                      "Waypoint",
+                      R.drawable.bc_waypoint,
+                      navController,
+                      mainVm.isLoggedIn,
+                      navDest = "waypoint",
+                  )
                 }
-
             }
         }
-
     }
 }
 
@@ -251,13 +255,14 @@ fun MenuButton(
                     mainVm.logout()
                     mainVm.updateLoggedIn(false)
                 }
+            } else if (navDest != null && navDest == "waypoint") {
+                context.startActivity(Intent(context, WaypointActivity::class.java), null)
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {
                     context.startActivity(Intent(context, ControllerActivity::class.java), null)
                     mainVm.sendMessage("SCM:MAP")
                 }
             }
-
         },
         modifier = Modifier
             .fillMaxWidth()
@@ -686,12 +691,12 @@ fun loginToServer(
         }
 
         response.split(";")[0].trim() == "Permission granted"
+      
     } catch (e: Exception) {
         e.printStackTrace()
         false
     }
 }
-
 
 @Preview(showBackground = true)
 @Composable

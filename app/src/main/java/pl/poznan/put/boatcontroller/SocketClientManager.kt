@@ -98,7 +98,7 @@ object SocketClientManager {
         writer = null
         reader = null
         socket = null
-
+      
         if (_isLoggedIn) {
             _isLoggedIn = false
             onLoginStatusChanged?.invoke(false)
@@ -112,4 +112,5 @@ object SocketClientManager {
     fun isInitialized(): Boolean {
         return socket != null
     }
+
 }

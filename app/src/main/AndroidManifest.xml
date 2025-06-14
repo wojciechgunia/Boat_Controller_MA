@@ -33,6 +33,13 @@
             android:theme="@style/Theme.BoatController"
             tools:ignore="DiscouragedApi" >
         </activity>
+  
+        <activity
+            android:name=".WaypointActivity"
+            android:exported="true"
+            android:theme="@style/Theme.BoatController"
+            tools:ignore="DiscouragedApi" >
+        </activity>
     </application>
 
 </manifest>
