@@ -16,6 +16,7 @@ object SocketClientManager {
     private var writer: BufferedWriter? = null
     private var reader: BufferedReader? = null
     private var listenJob: Job? = null
+    private var tocken: String? = null
 
     private var onMessageReceived: ((String) -> Unit)? = null
     private var onDisconnected: (() -> Unit)? = null
@@ -32,6 +33,10 @@ object SocketClientManager {
         _isLoggedIn = true
         onLoginStatusChanged?.invoke(true)
         startListening()
+    }
+
+    fun setTocken(tockenCode: String) {
+        tocken = tockenCode
     }
 
     fun setOnMessageReceivedListener(listener: (String) -> Unit) {
@@ -65,7 +70,7 @@ object SocketClientManager {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (socket?.isConnected == true && writer != null) {
-                    writer?.write(message)
+                    writer?.write("$message:$tocken")
                     writer?.flush()
                 }
             } catch (e: IOException) {
@@ -93,8 +98,7 @@ object SocketClientManager {
         writer = null
         reader = null
         socket = null
-
-        // Aktualizujemy stan logowania i powiadamiamy
+      
         if (_isLoggedIn) {
             _isLoggedIn = false
             onLoginStatusChanged?.invoke(false)
@@ -108,4 +112,5 @@ object SocketClientManager {
     fun isInitialized(): Boolean {
         return socket != null
     }
+
 }

@@ -5,9 +5,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import pl.poznan.put.boatcontroller.data.UserData
 import java.net.Socket
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val repo = Repository(app.applicationContext)
 
     var serverIp by mutableStateOf("")
         private set
@@ -17,23 +23,64 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var password by mutableStateOf("")
         private set
-    var isLoggedIn by mutableStateOf(false)
+    var isRemembered by mutableStateOf(false)
+        private set
+
+    var isLoggedIn by mutableStateOf<Boolean>(false)
         private set
 
     var socket by mutableStateOf<Socket?>(null)
         private set
 
     init {
+        insertDatabase()
         SocketClientManager.setOnLoginStatusChangedListener { loggedIn ->
             updateLoggedIn(loggedIn)
-//            if (!loggedIn) {
-//
-//            }
+        }
+    }
+
+    private fun insertDatabase() {
+        val userData = UserData(0, "", "", "", "", false)
+        CoroutineScope(viewModelScope.coroutineContext).launch {
+            if (repo.getCount() == 0) {
+                repo.insert(userData)
+            }
+        }
+    }
+
+    fun changeIsRemembered(isRemember: Boolean) {
+        CoroutineScope(viewModelScope.coroutineContext).launch {
+            repo.editRemember(isRemember)
+        }
+    }
+
+    fun loadUserData() {
+        CoroutineScope(viewModelScope.coroutineContext).launch {
+            repo.get().collect { userData ->
+                if(userData.isRemembered) {
+                    serverIp = userData.ipAddress
+                    serverPort = userData.port
+                    username = userData.login
+                    password = userData.password
+                    isRemembered = true
+                }
+            }
+        }
+    }
+
+    fun changeUserData(userData: UserData) {
+        CoroutineScope(viewModelScope.coroutineContext).launch {
+            repo.edit(userData.login, userData.password, userData.ipAddress, userData.port)
+            repo.editRemember(userData.isRemembered)
         }
     }
 
     fun updateServerIP(value: String) {
         serverIp = value
+    }
+
+    fun updateIsRemembered(value: Boolean) {
+        isRemembered = value
     }
 
     fun updateServerPort(value: String) {
@@ -52,14 +99,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         isLoggedIn = value
     }
 
-    fun updateSocket(socket: Socket?) {
+    fun updateSocket(socket: Socket?, tocken: String?) {
         this.socket = socket
         socket?.let {
             SocketClientManager.init(it)
             SocketClientManager.setOnDisconnectedListener {
                 updateLoggedIn(false)
             }
+            SocketClientManager.setTocken(tocken!!)
         }
+    }
+
+    fun sendMessage(message: String) {
+        SocketClientManager.sendMessage(message)
     }
 
     fun logout() {
