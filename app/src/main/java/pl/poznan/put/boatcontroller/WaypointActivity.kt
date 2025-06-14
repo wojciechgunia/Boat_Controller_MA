@@ -104,49 +104,53 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
+import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
     val cameraZoomAnimationTime = 2
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
         setContent {
-            val context = LocalContext.current
-            val colorScheme = MaterialTheme.colorScheme
+            BoatControllerTheme {
+                val context = LocalContext.current
+                val colorScheme = MaterialTheme.colorScheme
 
-            waypointVm.shouldFinish.observe(this) { shouldFinish ->
-                if (shouldFinish == true) {
-                    finish()
+                waypointVm.shouldFinish.observe(this) { shouldFinish ->
+                    if (shouldFinish == true) {
+                        finish()
+                    }
                 }
-            }
 
-            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    waypointVm.stopShipSimulation()
-                    waypointVm.onSimulationFinished()
-                    waypointVm.sendMessage("SCM:MEN")
-                    finish()
-                }
-            })
+                onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        waypointVm.stopShipSimulation()
+                        waypointVm.onSimulationFinished()
+                        waypointVm.sendMessage("SCM:MEN")
+                        finish()
+                    }
+                })
 
-            MapLibre.getInstance(
-                applicationContext
-            )
-//            Log.d("WAYPOINTS", waypointVm.flagPositions.toString())
-            val image = remember {
-                ResourcesCompat.getDrawable(
-                    context.resources,
-                    R.drawable.phone_android_2,
-                    context.theme
+                MapLibre.getInstance(
+                    applicationContext
                 )
-                    ?.toBitmap()
-                    ?.asImageBitmap()
-            }
-            if (!isLandscape()) {
-                RotatePhoneAnimation(colorScheme, image)
-            } else {
-                WaypointControlScreen(waypointVm)
+                //            Log.d("WAYPOINTS", waypointVm.flagPositions.toString())
+                val image = remember {
+                    ResourcesCompat.getDrawable(
+                        context.resources,
+                        R.drawable.phone_android_2,
+                        context.theme
+                    )
+                        ?.toBitmap()
+                        ?.asImageBitmap()
+                }
+                if (!isLandscape()) {
+                    RotatePhoneAnimation(colorScheme, image)
+                } else {
+                    WaypointControlScreen(waypointVm)
+                }
             }
         }
     }

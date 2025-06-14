@@ -76,15 +76,16 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun handleServerMessage(message: String) {
+        //println(message)
         if (message.trim().startsWith("SSP:")) {
-            val data = message.substringAfter("SSP:").split(",")
+            val data = message.substringAfter("SSP:").split(":")
             val lat = data[0].toDouble()
             val lon = data[1].toDouble()
             _shipPosition.value = ShipPosition(lat, lon)
         }
 
         if (message.trim().startsWith("WCW:")) {
-            val data = message.substringAfter("WCW:").split(",")
+            val data = message.substringAfter("WCW:").split(":")
             val id = data[0].toInt()
 
             val index = _flagPositions.indexOfFirst { it.id == id }
@@ -93,7 +94,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        if (message.trim().startsWith("WFW:")) {
+        if (message.trim().startsWith("WFW")) {
             onSimulationFinished()
         }
     }
