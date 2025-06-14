@@ -164,8 +164,10 @@ class ControllerActivity: ComponentActivity() {
     }
 
     fun sendSetHome(viewModel: ControllerViewModel) {
-        val message = "SHM:${viewModel.shipPosition.lat}:${viewModel.shipPosition.lon}"
-        viewModel.updateHomePosition(HomePosition(viewModel.shipPosition.lat, viewModel.shipPosition.lon))
+        val lat = viewModel.shipPosition.lat
+        val lon = viewModel.shipPosition.lon
+        val message = "SHM:${lat}:${lon}"
+        viewModel.updateHomePosition(HomePosition(lat, lon))
         println("Sending via socket: $message")
         viewModel.sendMessage(message)
     }
