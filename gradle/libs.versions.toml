@@ -1,7 +1,7 @@
 [versions]
 accompanistPermissions = "0.32.0"
 activityComposeVersion = "1.8.2"
-agp = "8.10.0"
+agp = "8.10.1"
 androidSdk = "10.5.0"
 androidxGraphicsShapes = "1.0.1"
 androidxNavigationCompose = "2.6.0"

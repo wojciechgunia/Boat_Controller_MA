@@ -40,5 +40,4 @@ class Repository(context: Context): UserDataDao {
             dao.getCount()
         }
     }
-
 }

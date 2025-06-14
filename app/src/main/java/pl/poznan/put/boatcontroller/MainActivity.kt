@@ -168,7 +168,8 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Controller",
                                 R.drawable.bc_controller,
                                 navController,
-                                navDest = "controller"
+                                navDest = "controller",
+                                mainVm = mainVm
                             )
                         }
                         Column(
@@ -220,7 +221,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         )
                     }
 
-                    MenuButton("Controller", R.drawable.bc_controller, navController, navDest = "controller")
+                    MenuButton("Controller", R.drawable.bc_controller, navController, navDest = "controller", mainVm = mainVm)
                     MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
                     MenuButton("Waypoint", R.drawable.bc_waypoint, navController, mainVm.isLoggedIn)
                 }
@@ -247,11 +248,14 @@ fun MenuButton(
                 navController.navigate(navDest)
             } else if (navDest != null && navDest == "disconnect") {
                 if (mainVm != null) {
-                    mainVm.socketClose()
+                    mainVm.logout()
                     mainVm.updateLoggedIn(false)
                 }
             } else if (navDest != null && navDest == "controller") {
-                context.startActivity(Intent(context, ControllerActivity::class.java), null)
+                if (mainVm != null) {
+                    context.startActivity(Intent(context, ControllerActivity::class.java), null)
+                    mainVm.sendMessage("SCM:MAP")
+                }
             }
 
         },
@@ -365,6 +369,7 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(5.dp))
                             Column(
                                 modifier = Modifier.weight(1f).fillMaxHeight(),
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -601,7 +606,6 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
                                             )
                                         withContext(Dispatchers.Main) {
                                             isLoading = false
-                                            //                                    println(result)
                                             mainVm.updateLoggedIn(result)
                                             if (result == false) {
                                                 showDialog = true
@@ -669,7 +673,6 @@ fun loginToServer(
 ): Boolean {
     return try {
         val socket = Socket(ip, port.toInt())
-
         val output = PrintWriter(socket.getOutputStream(), true)
         val input = BufferedReader(InputStreamReader(socket.getInputStream()))
 
@@ -678,14 +681,11 @@ fun loginToServer(
 
         val response = input.readLine()
 
-        if (response?.trim() == "Permission granted") {
-            mainVm.updateSocket(socket)
+        if (response.split(";")[0].trim() == "Permission granted") {
+            mainVm.updateSocket(socket, response.split(";")[1])
         }
-        when (response?.trim()) {
-            "Permission granted" -> true
-            "Permission denied" -> false
-            else -> false
-        }
+
+        response.split(";")[0].trim() == "Permission granted"
     } catch (e: Exception) {
         e.printStackTrace()
         false

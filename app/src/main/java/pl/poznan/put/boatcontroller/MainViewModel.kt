@@ -32,11 +32,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var isLoggedIn by mutableStateOf<Boolean>(false)
         private set
 
+
     var socket by mutableStateOf<Socket?>(null)
         private set
 
     init {
         insertDatabase()
+        SocketClientManager.setOnLoginStatusChangedListener { loggedIn ->
+            updateLoggedIn(loggedIn)
+        }
     }
 
     private fun insertDatabase() {
@@ -99,11 +103,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         isLoggedIn = value
     }
 
-    fun updateSocket(value: Socket?) {
-        socket = value
+    fun updateSocket(socket: Socket?, tocken: String?) {
+        this.socket = socket
+        socket?.let {
+            SocketClientManager.init(it)
+            SocketClientManager.setOnDisconnectedListener {
+                updateLoggedIn(false)
+            }
+            SocketClientManager.setTocken(tocken!!)
+        }
     }
 
-    fun socketClose() {
+    fun sendMessage(message: String) {
+        SocketClientManager.sendMessage(message)
+    }
+
+    fun logout() {
+        SocketClientManager.disconnect()
         socket?.close()
+        socket = null
     }
 }
