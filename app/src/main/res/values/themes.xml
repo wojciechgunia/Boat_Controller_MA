@@ -5,4 +5,7 @@
     <style name="Theme.BoatController.Splash" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
+
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    </style>
 </resources>

@@ -178,7 +178,14 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
+                            MenuButton(
+                                "VR Cam",
+                                R.drawable.bc_vr,
+                                navController,
+                                mainVm.isLoggedIn,
+                                navDest = "vrmode",
+                                mainVm = mainVm
+                            )
                             MenuButton(
                                 "Waypoint",
                                 R.drawable.bc_waypoint,
@@ -225,7 +232,14 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                     }
 
                     MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn, navDest = "controller", mainVm = mainVm)
-                    MenuButton("VR Cam", R.drawable.bc_vr, navController, mainVm.isLoggedIn)
+                    MenuButton(
+                        "VR Cam",
+                        R.drawable.bc_vr,
+                        navController,
+                        mainVm.isLoggedIn,
+                        navDest = "vrmode",
+                        mainVm = mainVm
+                    )
                     MenuButton(
                       "Waypoint",
                       R.drawable.bc_waypoint,
@@ -268,6 +282,11 @@ fun MenuButton(
                 if (mainVm != null) {
                     mainVm.sendMessage("SCM:MAP")
                     context.startActivity(Intent(context, ControllerActivity::class.java), null)
+                }
+            } else if (navDest != null && navDest == "vrmode") {
+                if (mainVm != null) {
+                    mainVm.sendMessage("SCM:VRM")
+                    context.startActivity(Intent(context, VRActivity::class.java), null)
                 }
             }
         },

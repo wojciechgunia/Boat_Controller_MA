@@ -24,4 +24,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "Boat Controller"
 include(":app")
- 
+include(":gvr-libraries:base")
+include(":gvr-libraries:common")
+include(":gvr-libraries:audio")
+
+project(":gvr-libraries:base").projectDir = file("libs/gvr/libraries/base")
+project(":gvr-libraries:common").projectDir = file("libs/gvr/libraries/common")
+project(":gvr-libraries:audio").projectDir = file("libs/gvr/libraries/audio")

@@ -15,6 +15,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        manifestPlaceholders["glEsVersion"] = "0x00020000"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

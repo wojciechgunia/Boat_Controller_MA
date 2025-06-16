@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="500dp"
+    android:height="500dp"
+    android:viewportWidth="500"
+    android:viewportHeight="500">
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="10"
+        android:strokeMiterLimit="10"
+        android:pathData="M 453.2 255.6 L 250 82.9 L 46.8 255.6 L 71.7 276.7 L 96.6 255.5 L 96.6 329.8 L 96.6 381 L 96.6 417.1 L 403.4 417.1 L 403.4 381 L 403.4 329.8 L 403.4 255.5 L 428.3 276.7 Z" />
+    <path
+        android:fillColor="#DBC491"
+        android:pathData="M 250 125.2 L 96.6 255.5 L 96.6 329.8 L 96.6 381 L 96.6 417.1 L 403.4 417.1 L 403.4 381 L 403.4 329.8 L 403.4 255.5 Z" />
+    <path
+        android:fillColor="#B92900"
+        android:pathData="M 250 125.2 L 428.3 276.7 L 453.2 255.6 L 250 82.9 L 46.8 255.6 L 71.7 276.7 Z" />
+    <path
+        android:fillColor="#785830"
+        android:pathData="M279.8,268.7v73.6h92v-73.6H279.8z M359.4,301.3H330v-20h29.4V301.3z M321.5,281.3v20h-29.4v-20H321.5z M292.2,309.8h29.4v22.1h-29.4V309.8z M330,331.9v-22.1h29.4v22.1H330z" />
+    <path
+        android:fillColor="#CCFFFC"
+        android:pathData="M 330 309.8 H 359.4 V 331.9 H 330 V 309.8 Z" />
+    <path
+        android:fillColor="#CCFFFC"
+        android:pathData="M 292.2 281.3 H 321.6 V 301.3 H 292.2 V 281.3 Z" />
+    <path
+        android:fillColor="#CCFFFC"
+        android:pathData="M 292.2 309.8 H 321.6 V 331.9 H 292.2 V 309.8 Z" />
+    <path
+        android:fillColor="#CCFFFC"
+        android:pathData="M 330 281.3 H 359.4 V 301.3 H 330 V 281.3 Z" />
+    <path
+        android:fillColor="#805F35"
+        android:pathData="M 140 248.6 H 242.2 V 415.6 H 140 V 248.6 Z" />
+    <path
+        android:fillColor="#D6AE5C"
+        android:pathData="M 217.1 317.3 C 222.181019698 317.3 226.3 321.418980302 226.3 326.5 C 226.3 331.581019698 222.181019698 335.7 217.1 335.7 C 212.018980302 335.7 207.9 331.581019698 207.9 326.5 C 207.9 321.418980302 212.018980302 317.3 217.1 317.3 Z" />
+</vector>

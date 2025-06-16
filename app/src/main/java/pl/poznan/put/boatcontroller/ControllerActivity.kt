@@ -526,6 +526,8 @@ class ControllerActivity: ComponentActivity() {
         var mapboxMapRef by remember { mutableStateOf<MapLibreMap?>(null) }
         var phoneSourceRef by remember { mutableStateOf<GeoJsonSource?>(null) }
 
+        var homeSourceRef by remember { mutableStateOf<GeoJsonSource?>(null) }
+
         LaunchedEffect(Unit) {
             if (!locationPermissionState.status.isGranted) {
                 locationPermissionState.launchPermissionRequest()
@@ -576,6 +578,23 @@ class ControllerActivity: ComponentActivity() {
             )
         }
 
+        LaunchedEffect(viewModel.homePosition) {
+            val homeSource = homeSourceRef ?: return@LaunchedEffect
+
+            val lat = viewModel.homePosition.lat
+            val lon = viewModel.homePosition.lon
+
+            if (lat == 0.0 && lon == 0.0) {
+                homeSource.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+            } else {
+                val homeFeature = Feature.fromGeometry(Point.fromLngLat(lon, lat)).apply {
+                    addStringProperty("title", "Home")
+                }
+
+                homeSource.setGeoJson(FeatureCollection.fromFeatures(listOf(homeFeature)))
+            }
+        }
+
         AndroidView(
             factory = {
                 MapLibre.getInstance(context)
@@ -617,16 +636,6 @@ class ControllerActivity: ComponentActivity() {
                               "id": "osm-layer",
                               "type": "raster",
                               "source": "osm"
-                            },
-                            {
-                              "id": "point-layer",
-                              "type": "symbol",
-                              "source": "point-source",
-                              "layout": {
-                                "icon-image": "ship-icon",
-                                "icon-size": 0.04,
-                                "icon-allow-overlap": true
-                              }
                             }
                           ]
                         }
@@ -654,9 +663,40 @@ class ControllerActivity: ComponentActivity() {
                             phoneDrawable.draw(canvas)
                         }
 
+                        val homeDrawable = ContextCompat.getDrawable(context, R.drawable.home)!!
+                        val homeBitmap = Bitmap.createBitmap(
+                            homeDrawable.intrinsicWidth,
+                            homeDrawable.intrinsicHeight,
+                            Bitmap.Config.ARGB_8888
+                        ).apply {
+                            val canvas = android.graphics.Canvas(this)
+                            homeDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                            homeDrawable.draw(canvas)
+                        }
+
                         mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                             style.addImage("ship-icon", shipBitmap)
                             style.addImage("phone-icon", phoneBitmap)
+                            style.addImage("home-icon", homeBitmap)
+
+                            val homeFeature = Feature.fromGeometry(
+                                Point.fromLngLat(
+                                    viewModel.homePosition.lon,
+                                    viewModel.homePosition.lat
+                                )
+                            ).apply {
+                                addStringProperty("title", "Home")
+                            }
+                            val homeSource = GeoJsonSource("home-source", FeatureCollection.fromFeatures(listOf(homeFeature)))
+                            homeSourceRef = homeSource
+                            style.addSource(homeSource)
+
+                            val homeLayer = SymbolLayer("home-layer", "home-source").withProperties(
+                                iconImage("home-icon"),
+                                iconSize(0.045f),
+                                iconAllowOverlap(true)
+                            )
+                            style.addLayer(homeLayer)
 
                             val phoneSource = GeoJsonSource("phone-source", FeatureCollection.fromFeatures(emptyArray()))
                             phoneSourceRef = phoneSource
@@ -668,6 +708,13 @@ class ControllerActivity: ComponentActivity() {
                                 iconAllowOverlap(true)
                             )
                             style.addLayer(phoneLayer)
+
+                            val shipLayer = SymbolLayer("ship-layer", "point-source").withProperties(
+                                iconImage("ship-icon"),
+                                iconSize(0.04f),
+                                iconAllowOverlap(true)
+                            )
+                            style.addLayer(shipLayer)
 
                             val position = CameraPosition.Builder()
                                 .target(LatLng(viewModel.shipPosition.lat, viewModel.shipPosition.lon))

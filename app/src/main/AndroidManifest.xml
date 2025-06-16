@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="true" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -38,6 +41,13 @@
             android:name=".WaypointActivity"
             android:exported="true"
             android:theme="@style/Theme.BoatController"
+            tools:ignore="DiscouragedApi" >
+        </activity>
+
+        <activity
+            android:name=".VRActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
             tools:ignore="DiscouragedApi" >
         </activity>
     </application>
