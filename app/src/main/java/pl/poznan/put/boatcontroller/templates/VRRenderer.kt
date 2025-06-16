@@ -11,6 +11,7 @@ import android.hardware.SensorManager
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import android.util.Log
 import pl.poznan.put.boatcontroller.R
 import pl.poznan.put.boatcontroller.dataclass.ShaderUtils
 import javax.microedition.khronos.egl.EGLConfig

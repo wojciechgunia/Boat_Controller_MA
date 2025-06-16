@@ -71,7 +71,7 @@ class Cylinder(
 
         Matrix.rotateM(modelMatrix, 0, -90f, 1f, 0f, 0f)
 
-        Matrix.perspectiveM(projMatrix, 0, 80f, 1f, 0.1f, 100f)
+        Matrix.perspectiveM(projMatrix, 0, 70f, 1f, 0.1f, 100f)
 
         // MVP = proj * view * model
         val tempMatrix = FloatArray(16)
