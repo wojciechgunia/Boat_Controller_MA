@@ -1,11 +1,12 @@
 package pl.poznan.put.boatcontroller
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -14,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -102,6 +104,8 @@ import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
+import pl.poznan.put.boatcontroller.enums.FlagIndication
+import pl.poznan.put.boatcontroller.enums.FlagIndicationType
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
@@ -383,8 +387,12 @@ class WaypointActivity : ComponentActivity() {
                                         latLng.latitude
                                     )
 
+                                    val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
+                                    val indicationDrawable = FlagIndicationType.STAR.toFlagIndication(context)
+
                                     val combinedBitmap = createFlagBitmap(
-                                        context,
+                                        flagDrawable,
+                                        indicationDrawable,
                                         newWaypoint.id.toString()
                                     )
                                     waypointVm.setFlagBitmap(newWaypoint.id, combinedBitmap)
@@ -476,52 +484,77 @@ class WaypointActivity : ComponentActivity() {
         )
     }
 
-    fun createFlagBitmap(context: Context, text: String): Bitmap {
-        val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
+    fun createFlagBitmap(
+        flagDrawable: Drawable,
+        indicationDrawable: FlagIndication?,
+        text: String
+    ): Bitmap {
+        // Canvas is creating image on (0,0) left/top so additional
+        // pixels are going on bottom/right
+        val extraTop = 30
+        val extraRight = 30
 
-        val cx = flagDrawable.intrinsicWidth + 0f
-        val cy = flagDrawable.intrinsicHeight + 0f
-        val radius = 60f
+        val flagScale = 0.20f
+        val flagWidth = (flagDrawable.intrinsicWidth * flagScale).toInt()
+        val flagHeight = (flagDrawable.intrinsicHeight * flagScale).toInt()
 
-        val minWidth = (cx + radius).toInt()
-        val minHeight = (cy + radius).toInt()
+        val width = flagWidth + extraRight
+        val height = flagHeight + extraTop
 
-        val width = maxOf(flagDrawable.intrinsicWidth, minWidth)
-        val height = maxOf(flagDrawable.intrinsicHeight, minHeight)
-
-        val paintCircle = Paint().apply {
-            color = Color.Red.toArgb()
-            isAntiAlias = true
-        }
-
-        val paintCircleBorder = Paint().apply {
-            color = Color.Black.toArgb()
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            isAntiAlias = true
-        }
-
-        val paintText = Paint().apply {
+        // Text number painted on flag
+        val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.White.toArgb()
-            textSize = 45f
+            textSize = 76f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
             isFakeBoldText = true
-            isAntiAlias = true
         }
-        val textY = cy - (paintText.descent() + paintText.ascent()) / 2
 
-        val flagBitmap = createBitmap(
-            width.toInt() + 50,
-            height.toInt() + 50,
+        val textX = flagWidth / 2f
+        val textY = flagHeight * 0.5f - (paintText.descent() + paintText.ascent()) / 2f
+
+        return createBitmap(
+            width,
+            height
         ).apply {
             val canvas = Canvas(this)
-            flagDrawable.setBounds(0, 0, flagDrawable.intrinsicWidth, flagDrawable.intrinsicHeight)
+
+            flagDrawable.setBounds(0, extraTop, flagWidth, extraTop + flagHeight)
             flagDrawable.draw(canvas)
-            canvas.drawCircle(cx, cy, radius, paintCircle)
-            canvas.drawCircle(cx, cy, radius, paintCircleBorder)
-            canvas.drawText(text, cx, textY, paintText)
+
+            indicationDrawable?.let { ind ->
+                val indicationScale = 0.08f
+                val dw = (ind.drawable.intrinsicWidth * indicationScale).toInt()
+                val dh = (ind.drawable.intrinsicHeight * indicationScale).toInt()
+
+                val indLeft = width - dw
+                val indTop = 0
+                val indRight = indLeft + dw
+                val indBottom = indTop + dh
+
+                ind.drawable.setBounds(indLeft, indTop, indRight, indBottom)
+                ind.drawable.draw(canvas)
+            }
+
+            canvas.drawText(text, textX, textY, paintText)
         }
-        return flagBitmap
+    }
+
+    // Canvas for tests in preview without compiling whole app
+    @Preview(showBackground = true)
+    @Composable
+    fun FlagBitmapPreview() {
+        val context = LocalContext.current
+        val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
+        val indicationDrawable = FlagIndicationType.COMPASS.toFlagIndication(context)
+
+        val bitmap = remember { createFlagBitmap(flagDrawable, indicationDrawable, "42") }
+
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier.padding(16.dp)
+        )
     }
 
     @Composable
