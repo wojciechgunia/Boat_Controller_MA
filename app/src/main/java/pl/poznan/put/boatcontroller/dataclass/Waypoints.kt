@@ -44,6 +44,7 @@ data class WaypointObject(
 )
 
 data class POIObject(
+    var id: Int,
     val lon: Double,
     val lat: Double,
 )

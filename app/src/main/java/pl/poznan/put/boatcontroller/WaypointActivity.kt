@@ -1,6 +1,7 @@
 package pl.poznan.put.boatcontroller
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -86,7 +87,6 @@ import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import androidx.core.graphics.createBitmap
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.style.expressions.Expression.get
-import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
@@ -103,6 +103,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.enums.ShipDirection
@@ -141,7 +142,6 @@ class WaypointActivity : ComponentActivity() {
                 MapLibre.getInstance(
                     applicationContext
                 )
-                //            Log.d("WAYPOINTS", waypointVm.waypointPositions.toString())
                 val image = remember {
                     ResourcesCompat.getDrawable(
                         context.resources,
@@ -175,11 +175,11 @@ class WaypointActivity : ComponentActivity() {
             snapshotFlow { waypointVm.waypointPositions.toList() to shipPos.value }
                 .collect {
                     val waypointsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("waypoint-source")
-                    val linesSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("lines-source")
+                    val waypointConnectionsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("waypoint-connections-source")
                     val shipSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("ship-source")
 
-                    if (waypointsSource != null && linesSource != null && shipSource != null) {
-                        waypointVm.updateMapSources(waypointsSource, linesSource, shipSource)
+                    if (waypointsSource != null && waypointConnectionsSource != null && shipSource != null) {
+                        waypointVm.updateMapSources(waypointsSource, waypointConnectionsSource, shipSource)
                     }
                 }
         }
@@ -326,6 +326,10 @@ class WaypointActivity : ComponentActivity() {
                     }
 
                     mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                        // ===========================
+                        // SHIP SOURCE & LAYER
+                        // ===========================
+
                         style.addImage("ship-icon", shipBitmap)
                         val shipCoordinates = Point.fromLngLat(
                             waypointVm.shipPosition.value.lon,
@@ -340,7 +344,6 @@ class WaypointActivity : ComponentActivity() {
                             "ship-source",
                             FeatureCollection.fromFeatures(listOf(shipFeature))
                         )
-
                         style.addSource(shipSource)
 
                         val shipLayer = SymbolLayer("ship-layer", "ship-source")
@@ -349,8 +352,12 @@ class WaypointActivity : ComponentActivity() {
                                 iconSize(0.07f),
                                 iconAllowOverlap(true)
                             )
-
                         style.addLayer(shipLayer)
+
+                        // ===========================
+                        // WAYPOINT SOURCE & LAYER
+                        // ===========================
+
                         val waypointsSource = GeoJsonSource(
                             "waypoint-source",
                             FeatureCollection.fromFeatures(emptyArray())
@@ -363,16 +370,37 @@ class WaypointActivity : ComponentActivity() {
                                 iconSize(waypointSizeScaling),
                                 iconAllowOverlap(true),
                             )
-
                         style.addLayer(waypointLayer)
 
-                        val linesSource = GeoJsonSource(
-                            "lines-source",
+                        // ===========================
+                        // POINTS OF INTEREST (POI) SOURCE & LAYER
+                        // ===========================
+
+                        val poiSource = GeoJsonSource(
+                            "poi-source",
                             FeatureCollection.fromFeatures(emptyArray())
                         )
-                        style.addSource(linesSource)
+                        style.addSource(poiSource)
 
-                        val lineLayer = LineLayer("lines-layer", "lines-source")
+                        val poiLayer = SymbolLayer("poi-layer", "poi-source")
+                            .withProperties(
+                                iconImage("poi-icon"),
+                                iconSize(waypointSizeScaling),
+                                iconAllowOverlap(true),
+                            )
+                        style.addLayer(poiLayer)
+
+                        // ===========================
+                        // WAYPOINT CONNECTIONS SOURCE & LAYER
+                        // ===========================
+
+                        val waypointConnectionsSource = GeoJsonSource(
+                            "waypoint-connections-source",
+                            FeatureCollection.fromFeatures(emptyArray())
+                        )
+                        style.addSource(waypointConnectionsSource)
+
+                        val waypointConnectionsLayer = LineLayer("waypoint-connections-layer", "waypoint-connections-source")
                             .withProperties(
                                 lineColor(Color.Black.toArgb()),
                                 lineWidth(2.0f),
@@ -380,7 +408,7 @@ class WaypointActivity : ComponentActivity() {
                                 lineCap(Property.LINE_CAP_ROUND),
                                 lineJoin(Property.LINE_JOIN_ROUND)
                             )
-                        style.addLayerBelow(lineLayer, "waypoint-layer")
+                        style.addLayerBelow(waypointConnectionsLayer, "waypoint-layer")
 
                         val savedCamPos = waypointVm.cameraPosition.value
 
@@ -410,7 +438,10 @@ class WaypointActivity : ComponentActivity() {
                         }
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
-                        waypointVm.updateMapSources(waypointsSource, linesSource, shipSource)
+                        waypointVm.updateMapSources(waypointsSource, waypointConnectionsSource, shipSource)
+                        waypointVm.showMapPoiSources(poiSource)
+
+                        createPoiWaypoints(context, style)
 
                         mapboxMap.addOnMapClickListener { latLng ->
                             val mode = waypointVm.waypointMode
@@ -438,6 +469,10 @@ class WaypointActivity : ComponentActivity() {
                                             combinedBitmap
                                         )
                                     }
+                                    Log.d("WAYPOINTS_COORDINATES_${newWaypoint.id}",
+                                        "(" + waypointVm.getWaypointById(newWaypoint.id)?.lat.toString() + ", " +
+                                                waypointVm.getWaypointById(newWaypoint.id)?.lon.toString() + ")"
+                                    )
                                     true
                                 }
 
@@ -522,7 +557,7 @@ class WaypointActivity : ComponentActivity() {
     fun createWaypointBitmap(
         waypointDrawable: Drawable,
         indicationDrawable: WaypointIndication?,
-        text: String
+        waypointNumber: String = ""
     ): Bitmap {
         // Canvas is creating image on (0,0) left/top so additional
         // pixels are going on bottom/right
@@ -535,18 +570,6 @@ class WaypointActivity : ComponentActivity() {
 
         val width = waypointWidth + extraRight
         val height = waypointHeight + extraTop
-
-        // Text number painted on waypoint
-        val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.White.toArgb()
-            textSize = 76f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-            isFakeBoldText = true
-        }
-
-        val textX = waypointWidth / 2f
-        val textY = waypointHeight * 0.5f - (paintText.descent() + paintText.ascent()) / 2f
 
         return createBitmap(
             width,
@@ -571,7 +594,37 @@ class WaypointActivity : ComponentActivity() {
                 ind.drawable.draw(canvas)
             }
 
-            canvas.drawText(text, textX, textY, paintText)
+            if(waypointNumber != "") {
+                val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.White.toArgb()
+                    textSize = 76f
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    textAlign = Paint.Align.CENTER
+                    isFakeBoldText = true
+                }
+
+                val textX = waypointWidth / 2f
+                val textY = waypointHeight * 0.5f - (paintText.descent() + paintText.ascent()) / 2f
+
+                canvas.drawText(waypointNumber, textX, textY, paintText)
+            }
+        }
+    }
+
+    fun createPoiWaypoints(context: Context, style: Style) {
+        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+        val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
+
+        val combinedBitmap = createWaypointBitmap(
+            waypointDrawable,
+            indicationDrawable,
+        )
+
+        if (style.getImage("poi-icon") == null) {
+            style.addImage(
+                "poi-icon",
+                combinedBitmap
+            )
         }
     }
 
@@ -583,7 +636,7 @@ class WaypointActivity : ComponentActivity() {
         val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
         val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
 
-        val bitmap = remember { createWaypointBitmap(waypointDrawable, indicationDrawable, "42") }
+        val bitmap = remember { createWaypointBitmap(waypointDrawable, indicationDrawable, "29") }
 
         Image(
             bitmap = bitmap.asImageBitmap(),

@@ -2,6 +2,7 @@ package pl.poznan.put.boatcontroller
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -21,6 +22,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
+import pl.poznan.put.boatcontroller.dataclass.POIObject
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.ShipDirection
@@ -41,6 +43,17 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     private var _waypointPositions = mutableStateListOf<WaypointObject>()
     var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
+
+    // Points Of Interest Positions
+    private var _poiPositions = mutableStateListOf<POIObject>(
+        POIObject(1, 52.407290230659044, 16.961791682925508),
+        POIObject(2, 52.40557452887799, 16.964251055063528),
+        POIObject(3, 52.404813373903465, 16.969023183764534),
+        POIObject(4, 52.40419750664509, 16.9765630569988),
+        POIObject(5, 52.402493273130546, 16.984584841400135),
+        POIObject(6, 52.40082567874097, 16.985875875771626),
+    )
+    var poiPositions: SnapshotStateList<POIObject> = _poiPositions
 
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
@@ -219,10 +232,14 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateMapSources(waypointSource: GeoJsonSource, linesSource: GeoJsonSource, shipSource: GeoJsonSource) {
+    fun updateMapSources(waypointSource: GeoJsonSource, waypointConnectionsSource: GeoJsonSource, shipSource: GeoJsonSource) {
         waypointSource.setGeoJson(FeatureCollection.fromFeatures(getWaypointsFeatures()))
-        linesSource.setGeoJson(FeatureCollection.fromFeatures(getConnectionLines()))
+        waypointConnectionsSource.setGeoJson(FeatureCollection.fromFeatures(getConnectionLines()))
         shipSource.setGeoJson(getShipFeature())
+    }
+
+    fun showMapPoiSources(poiSource: GeoJsonSource) {
+        poiSource.setGeoJson(FeatureCollection.fromFeatures(getPoiFeatures()))
     }
 
     fun getShipFeature(): FeatureCollection? {
@@ -237,6 +254,14 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "waypoint-icon-${it.id}")
+            }
+        }
+    }
+
+    fun getPoiFeatures(): List<Feature> {
+        return _poiPositions.map {
+            Feature.fromGeometry(Point.fromLngLat(it.lat, it.lon)).apply {
+                addStringProperty("icon", "poi-icon")
             }
         }
     }
