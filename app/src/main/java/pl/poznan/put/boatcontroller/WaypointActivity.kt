@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,9 +105,9 @@ import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
-import pl.poznan.put.boatcontroller.enums.FlagIndication
-import pl.poznan.put.boatcontroller.enums.FlagIndicationType
 import pl.poznan.put.boatcontroller.enums.ShipDirection
+import pl.poznan.put.boatcontroller.enums.WaypointIndication
+import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
@@ -140,7 +141,7 @@ class WaypointActivity : ComponentActivity() {
                 MapLibre.getInstance(
                     applicationContext
                 )
-                //            Log.d("WAYPOINTS", waypointVm.flagPositions.toString())
+                //            Log.d("WAYPOINTS", waypointVm.waypointPositions.toString())
                 val image = remember {
                     ResourcesCompat.getDrawable(
                         context.resources,
@@ -171,14 +172,14 @@ class WaypointActivity : ComponentActivity() {
         val shipPos = waypointVm.shipPosition
 
         LaunchedEffect(Unit) {
-            snapshotFlow { waypointVm.flagPositions.toList() to shipPos.value }
+            snapshotFlow { waypointVm.waypointPositions.toList() to shipPos.value }
                 .collect {
-                    val flagsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("flags-source")
+                    val waypointsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("waypoint-source")
                     val linesSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("lines-source")
                     val shipSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("ship-source")
 
-                    if (flagsSource != null && linesSource != null && shipSource != null) {
-                        waypointVm.updateMapSources(flagsSource, linesSource, shipSource)
+                    if (waypointsSource != null && linesSource != null && shipSource != null) {
+                        waypointVm.updateMapSources(waypointsSource, linesSource, shipSource)
                     }
                 }
         }
@@ -191,33 +192,67 @@ class WaypointActivity : ComponentActivity() {
 
             SlidingToolbar(waypointVm)
 
-            FloatingActionButton(
-                onClick = {
-                    val shipPosition = waypointVm.shipPosition.value
-                    val zoom = 16.0
-                    mapLibreMapState.value?.animateCamera(
-                        CameraUpdateFactory.newLatLngZoom(
-                            LatLng(
-                                shipPosition.lat,
-                                shipPosition.lon
-                            ), zoom
-                        ),
-                        cameraZoomAnimationTime * 1000
-                    )
-                },
-                shape = CircleShape,
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .shadow(16.dp, CircleShape, clip = false)
-                    .clip(CircleShape),
-                containerColor = colorResource(id = R.color.blue)
+                    .fillMaxSize()
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.current_location_tracker),
-                    contentDescription = "Center Map",
-                    tint = Color.White
-                )
+                FloatingActionButton(
+                    onClick = {
+                        val shipPosition = waypointVm.shipPosition.value
+                        val zoom = 16.0
+                        mapLibreMapState.value?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                LatLng(
+                                    shipPosition.lat,
+                                    shipPosition.lon
+                                ), zoom
+                            ),
+                            cameraZoomAnimationTime * 1000
+                        )
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.blue)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.current_location_tracker),
+                        contentDescription = "Center Map",
+                        tint = Color.White
+                    )
+                }
+
+                FloatingActionButton(
+                    onClick = {
+                        val shipPosition = waypointVm.shipPosition.value
+                        val zoom = 32.0
+                        mapLibreMapState.value?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                LatLng(
+                                    shipPosition.lat,
+                                    shipPosition.lon
+                                ), zoom
+                            ),
+                            cameraZoomAnimationTime * 1000
+                        )
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 88.dp, bottom = 16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.teal_700)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Visibility,
+                        contentDescription = "Center Map",
+                        tint = Color.White
+                    )
+                }
             }
         }
     }
@@ -226,7 +261,7 @@ class WaypointActivity : ComponentActivity() {
     @Composable
     fun MapTab(waypointVm: WaypointViewModel, onMapReady: (MapLibreMap) -> Unit) {
         val context = LocalContext.current
-        val flagSizeScaling = 0.45f
+        val waypointSizeScaling = 0.45f
         val lifecycleOwner = LocalLifecycleOwner.current
         val mapView = remember { MapView(context) }
 
@@ -316,20 +351,20 @@ class WaypointActivity : ComponentActivity() {
                             )
 
                         style.addLayer(shipLayer)
-                        val flagsSource = GeoJsonSource(
-                            "flags-source",
+                        val waypointsSource = GeoJsonSource(
+                            "waypoint-source",
                             FeatureCollection.fromFeatures(emptyArray())
                         )
-                        style.addSource(flagsSource)
+                        style.addSource(waypointsSource)
 
-                        val flagLayer = SymbolLayer("flags-layer", "flags-source")
+                        val waypointLayer = SymbolLayer("waypoint-layer", "waypoint-source")
                             .withProperties(
                                 iconImage(get("icon")),
-                                iconSize(flagSizeScaling),
+                                iconSize(waypointSizeScaling),
                                 iconAllowOverlap(true),
                             )
 
-                        style.addLayer(flagLayer)
+                        style.addLayer(waypointLayer)
 
                         val linesSource = GeoJsonSource(
                             "lines-source",
@@ -345,7 +380,7 @@ class WaypointActivity : ComponentActivity() {
                                 lineCap(Property.LINE_CAP_ROUND),
                                 lineJoin(Property.LINE_JOIN_ROUND)
                             )
-                        style.addLayerBelow(lineLayer, "flags-layer")
+                        style.addLayerBelow(lineLayer, "waypoint-layer")
 
                         val savedCamPos = waypointVm.cameraPosition.value
 
@@ -375,44 +410,44 @@ class WaypointActivity : ComponentActivity() {
                         }
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
-                        waypointVm.updateMapSources(flagsSource, linesSource, shipSource)
+                        waypointVm.updateMapSources(waypointsSource, linesSource, shipSource)
 
                         mapboxMap.addOnMapClickListener { latLng ->
                             val mode = waypointVm.waypointMode
-                            Log.d("FLAGMODE", "Current mode: $mode")
+                            Log.d("WAYPOINTMODE", "Current mode: $mode")
                             when (mode) {
-                                WaypointMode.FLAG_ADD -> {
-                                    val newWaypoint = waypointVm.addFlag(
+                                WaypointMode.WAYPOINT_ADD -> {
+                                    val newWaypoint = waypointVm.addWaypoint(
                                         latLng.longitude,
                                         latLng.latitude
                                     )
 
-                                    val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
-                                    val indicationDrawable = FlagIndicationType.STAR.toFlagIndication(context)
+                                    val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+                                    val indicationDrawable = WaypointIndicationType.STAR.toWaypointIndication(context)
 
-                                    val combinedBitmap = createFlagBitmap(
-                                        flagDrawable,
+                                    val combinedBitmap = createWaypointBitmap(
+                                        waypointDrawable,
                                         indicationDrawable,
                                         newWaypoint.id.toString()
                                     )
-                                    waypointVm.setFlagBitmap(newWaypoint.id, combinedBitmap)
+                                    waypointVm.setWaypointBitmap(newWaypoint.id, combinedBitmap)
 
-                                    if (style.getImage("flag-icon-${newWaypoint.id}") == null) {
+                                    if (style.getImage("waypoint-icon-${newWaypoint.id}") == null) {
                                         style.addImage(
-                                            "flag-icon-${newWaypoint.id}",
+                                            "waypoint-icon-${newWaypoint.id}",
                                             combinedBitmap
                                         )
                                     }
                                     true
                                 }
 
-                                WaypointMode.FLAG_DELETE -> {
+                                WaypointMode.WAYPOINT_DELETE -> {
                                     val screenPoint =
                                         mapboxMap.projection.toScreenLocation(latLng)
 
                                     val features = mapboxMap.queryRenderedFeatures(
                                         screenPoint,
-                                        "flags-layer"
+                                        "waypoint-layer"
                                     )
 
                                     if (features.isNotEmpty()) {
@@ -421,8 +456,8 @@ class WaypointActivity : ComponentActivity() {
                                             ?.toIntOrNull()
 
                                         if (id != null) {
-                                            waypointVm.removeFlag(id)
-                                            updateFlagBitmaps(style)
+                                            waypointVm.removeWaypoint(id)
+                                            updateWaypointBitmaps(style)
                                         }
                                         true
                                     } else {
@@ -430,14 +465,14 @@ class WaypointActivity : ComponentActivity() {
                                     }
                                 }
 
-                                WaypointMode.FLAG_MOVE -> {
-                                    val movingId = waypointVm.flagToMoveId
+                                WaypointMode.WAYPOINT_MOVE -> {
+                                    val movingId = waypointVm.waypointToMoveId
                                     if (movingId == null) {
                                         val screenPoint =
                                             mapboxMap.projection.toScreenLocation(latLng)
                                         val features = mapboxMap.queryRenderedFeatures(
                                             screenPoint,
-                                            "flags-layer"
+                                            "waypoint-layer"
                                         )
 
                                         if (features.isNotEmpty()) {
@@ -446,29 +481,29 @@ class WaypointActivity : ComponentActivity() {
                                                 ?.toIntOrNull()
                                             if (id != null) {
                                                 if(waypointVm.getWaypointById(id)?.isCompleted == false) {
-                                                    waypointVm.flagToMoveId = id
-                                                    val bitmap = waypointVm.flagBitmaps[id]!!
+                                                    waypointVm.waypointToMoveId = id
+                                                    val bitmap = waypointVm.waypointBitmaps[id]!!
                                                     val selectedBitmap =
                                                         bitmap.scale(
                                                             (bitmap.width * 1.2f).toInt(),
                                                             (bitmap.height * 1.2f).toInt()
                                                         )
-                                                    style.addImage("flag-icon-$id", selectedBitmap)
+                                                    style.addImage("waypoint-icon-$id", selectedBitmap)
                                                 }
                                             }
                                         }
                                         true
                                     } else {
-                                        waypointVm.moveFlag(
+                                        waypointVm.moveWaypoint(
                                             movingId,
                                             latLng.longitude,
                                             latLng.latitude
                                         )
 
-                                        val bitmap = waypointVm.flagBitmaps[movingId]!!
-                                        style.addImage("flag-icon-$movingId", bitmap)
+                                        val bitmap = waypointVm.waypointBitmaps[movingId]!!
+                                        style.addImage("waypoint-icon-$movingId", bitmap)
 
-                                        waypointVm.flagToMoveId = null
+                                        waypointVm.waypointToMoveId = null
                                         true
                                     }
                                 }
@@ -476,7 +511,7 @@ class WaypointActivity : ComponentActivity() {
                                 else -> false
                             }
                         }
-                        updateFlagBitmaps(style)
+                        updateWaypointBitmaps(style)
                     }
                     onMapReady(mapboxMap)
                 }
@@ -484,9 +519,9 @@ class WaypointActivity : ComponentActivity() {
         )
     }
 
-    fun createFlagBitmap(
-        flagDrawable: Drawable,
-        indicationDrawable: FlagIndication?,
+    fun createWaypointBitmap(
+        waypointDrawable: Drawable,
+        indicationDrawable: WaypointIndication?,
         text: String
     ): Bitmap {
         // Canvas is creating image on (0,0) left/top so additional
@@ -494,14 +529,14 @@ class WaypointActivity : ComponentActivity() {
         val extraTop = 30
         val extraRight = 30
 
-        val flagScale = 0.20f
-        val flagWidth = (flagDrawable.intrinsicWidth * flagScale).toInt()
-        val flagHeight = (flagDrawable.intrinsicHeight * flagScale).toInt()
+        val waypointScale = 0.20f
+        val waypointWidth = (waypointDrawable.intrinsicWidth * waypointScale).toInt()
+        val waypointHeight = (waypointDrawable.intrinsicHeight * waypointScale).toInt()
 
-        val width = flagWidth + extraRight
-        val height = flagHeight + extraTop
+        val width = waypointWidth + extraRight
+        val height = waypointHeight + extraTop
 
-        // Text number painted on flag
+        // Text number painted on waypoint
         val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.White.toArgb()
             textSize = 76f
@@ -510,8 +545,8 @@ class WaypointActivity : ComponentActivity() {
             isFakeBoldText = true
         }
 
-        val textX = flagWidth / 2f
-        val textY = flagHeight * 0.5f - (paintText.descent() + paintText.ascent()) / 2f
+        val textX = waypointWidth / 2f
+        val textY = waypointHeight * 0.5f - (paintText.descent() + paintText.ascent()) / 2f
 
         return createBitmap(
             width,
@@ -519,8 +554,8 @@ class WaypointActivity : ComponentActivity() {
         ).apply {
             val canvas = Canvas(this)
 
-            flagDrawable.setBounds(0, extraTop, flagWidth, extraTop + flagHeight)
-            flagDrawable.draw(canvas)
+            waypointDrawable.setBounds(0, extraTop, waypointWidth, extraTop + waypointHeight)
+            waypointDrawable.draw(canvas)
 
             indicationDrawable?.let { ind ->
                 val indicationScale = 0.08f
@@ -543,12 +578,12 @@ class WaypointActivity : ComponentActivity() {
     // Canvas for tests in preview without compiling whole app
     @Preview(showBackground = true)
     @Composable
-    fun FlagBitmapPreview() {
+    fun WaypointBitmapPreview() {
         val context = LocalContext.current
-        val flagDrawable = ContextCompat.getDrawable(context, R.drawable.ic_flag)!!
-        val indicationDrawable = FlagIndicationType.COMPASS.toFlagIndication(context)
+        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+        val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
 
-        val bitmap = remember { createFlagBitmap(flagDrawable, indicationDrawable, "42") }
+        val bitmap = remember { createWaypointBitmap(waypointDrawable, indicationDrawable, "42") }
 
         Image(
             bitmap = bitmap.asImageBitmap(),
@@ -623,26 +658,26 @@ class WaypointActivity : ComponentActivity() {
                         ) {
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_add,
-                                waypointMode = WaypointMode.FLAG_ADD,
+                                waypointMode = WaypointMode.WAYPOINT_ADD,
                                 onClick = {
-//                                    waypointVm.setFlagEditMode(WaypointMode.FLAG_ADD)
-                                    waypointVm.toggleFlagEditMode(WaypointMode.FLAG_ADD)
+//                                    waypointVm.setWaypointEditMode(WaypointMode.WAYPOINT_ADD)
+                                    waypointVm.toggleWaypointEditMode(WaypointMode.WAYPOINT_ADD)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_delete,
-                                waypointMode = WaypointMode.FLAG_DELETE,
+                                waypointMode = WaypointMode.WAYPOINT_DELETE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(WaypointMode.FLAG_DELETE)
+                                    waypointVm.toggleWaypointEditMode(WaypointMode.WAYPOINT_DELETE)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_move,
-                                waypointMode = WaypointMode.FLAG_MOVE,
+                                waypointMode = WaypointMode.WAYPOINT_MOVE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(WaypointMode.FLAG_MOVE)
+                                    waypointVm.toggleWaypointEditMode(WaypointMode.WAYPOINT_MOVE)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
@@ -650,7 +685,7 @@ class WaypointActivity : ComponentActivity() {
                                 drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
                                 waypointMode = WaypointMode.SHIP_DEFAULT_MOVE,
                                 onClick = {
-                                    waypointVm.toggleFlagEditMode(WaypointMode.SHIP_DEFAULT_MOVE)
+                                    waypointVm.toggleWaypointEditMode(WaypointMode.SHIP_DEFAULT_MOVE)
                                     waypointVm.toggleSimulation()
                                 },
                             )
@@ -735,10 +770,10 @@ class WaypointActivity : ComponentActivity() {
         }
     }
 
-    fun updateFlagBitmaps(style: Style) {
-        waypointVm.flagBitmaps.forEach { (idx, bitmap) ->
+    fun updateWaypointBitmaps(style: Style) {
+        waypointVm.waypointBitmaps.forEach { (idx, bitmap) ->
             style.addImage(
-                "flag-icon-$idx",
+                "waypoint-icon-$idx",
                 bitmap
             )
         }

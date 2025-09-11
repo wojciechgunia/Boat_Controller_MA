@@ -36,16 +36,16 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var _currentShipDirection = mutableStateOf<ShipDirection>(ShipDirection.DEFAULT)
     var currentShipDirection: MutableState<ShipDirection> = _currentShipDirection
 
-    private val _flagBitmaps = mutableStateMapOf<Int, Bitmap>()
-    val flagBitmaps: Map<Int, Bitmap> = _flagBitmaps
+    private val _waypointBitmaps = mutableStateMapOf<Int, Bitmap>()
+    val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
 
-    private var _flagPositions = mutableStateListOf<WaypointObject>()
-    var flagPositions: SnapshotStateList<WaypointObject> = _flagPositions
+    private var _waypointPositions = mutableStateListOf<WaypointObject>()
+    var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
 
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
 
-    var flagToMoveId: Int? by mutableStateOf(null)
+    var waypointToMoveId: Int? by mutableStateOf(null)
     var waypointMode by mutableStateOf<WaypointMode?>(null)
         private set
 
@@ -72,7 +72,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 _shouldFinish.postValue(true)
             }
         }
-        addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
+        addWaypoint(_shipPosition.value.lon, _shipPosition.value.lat)
     }
 
     fun handleServerMessage(message: String) {
@@ -88,9 +88,9 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             val data = message.substringAfter("WCW:").split(":")
             val id = data[0].toInt()
 
-            val index = _flagPositions.indexOfFirst { it.id == id }
+            val index = _waypointPositions.indexOfFirst { it.id == id }
             if (index != -1) {
-                _flagPositions[index] = _flagPositions[index].copy(isCompleted = true)
+                _waypointPositions[index] = _waypointPositions[index].copy(isCompleted = true)
             }
         }
 
@@ -100,8 +100,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startShipSimulation() {
-        val flags = flagPositions.sortedBy { it.id }
-        if (flags.isEmpty()) return
+        val waypoints = waypointPositions.sortedBy { it.id }
+        if (waypoints.isEmpty()) return
 
         shipMovingJob = viewModelScope.launch {
             try {
@@ -148,8 +148,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onSimulationFinished() {
-        _flagPositions.clear()
-        addFlag(_shipPosition.value.lon, _shipPosition.value.lat)
+        _waypointPositions.clear()
+        addWaypoint(_shipPosition.value.lon, _shipPosition.value.lat)
         _isShipMoving.value = false
         _currentShipDirection.value = ShipDirection.DEFAULT
         shipMovingJob?.cancel()
@@ -157,7 +157,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getNextAvailableId(): Int {
-        val usedIds = _flagPositions.map { it.id }.toSet()
+        val usedIds = _waypointPositions.map { it.id }.toSet()
         var id = 0
         while (id in usedIds) {
             id++
@@ -165,42 +165,42 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         return id
     }
 
-    fun setFlagBitmap(id: Int, bitmap: Bitmap) {
-        _flagBitmaps[id] = bitmap
+    fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
+        _waypointBitmaps[id] = bitmap
     }
 
-//    fun hasBitmap(id: Int) = _flagBitmaps.containsKey(id)
+//    fun hasBitmap(id: Int) = _waypointBitmaps.containsKey(id)
 
-    fun addFlag(lon: Double, lat: Double): WaypointObject {
+    fun addWaypoint(lon: Double, lat: Double): WaypointObject {
         val id = getNextAvailableId()
         val waypoint = WaypointObject(id, lon, lat)
-        _flagPositions.add(waypoint)
+        _waypointPositions.add(waypoint)
         val message = "WAP:${id}:${lat}:${lon}"
         SocketClientManager.sendMessage(message)
         println("Sending via socket: $message")
         return waypoint
     }
 
-    fun removeFlag(id: Int) {
-        _flagPositions.removeAll { it.id == id }
+    fun removeWaypoint(id: Int) {
+        _waypointPositions.removeAll { it.id == id }
         val message = "WDP:${id}"
         SocketClientManager.sendMessage(message)
         println("Sending via socket: $message")
-        reindexFlags(id)
+        reindexWaypoints(id)
     }
 
-    fun moveFlag(id: Int, newLon: Double, newLat: Double) {
-        val index = _flagPositions.indexOfFirst { it.id == id }
+    fun moveWaypoint(id: Int, newLon: Double, newLat: Double) {
+        val index = _waypointPositions.indexOfFirst { it.id == id }
         if (index != -1) {
-            _flagPositions[index] = _flagPositions[index].copy(lon = newLon, lat = newLat)
+            _waypointPositions[index] = _waypointPositions[index].copy(lon = newLon, lat = newLat)
         }
         val message = "WUP:${id}:${newLat}:${newLon}"
         SocketClientManager.sendMessage(message)
         println("Sending via socket: $message")
     }
 
-    fun reindexFlags(removedId: Int) {
-        _flagPositions.forEach { wp ->
+    fun reindexWaypoints(removedId: Int) {
+        _waypointPositions.forEach { wp ->
             if (wp.id > removedId) {
                 wp.id -= 1
             }
@@ -208,10 +208,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getWaypointById(id: Int): WaypointObject? {
-        return flagPositions.find { it.id == id }
+        return waypointPositions.find { it.id == id }
     }
 
-    fun toggleFlagEditMode(mode: WaypointMode?) {
+    fun toggleWaypointEditMode(mode: WaypointMode?) {
         waypointMode = if(waypointMode != mode && mode != null) {
             mode
         } else {
@@ -219,8 +219,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateMapSources(flagsSource: GeoJsonSource, linesSource: GeoJsonSource, shipSource: GeoJsonSource) {
-        flagsSource.setGeoJson(FeatureCollection.fromFeatures(getFlagFeatures()))
+    fun updateMapSources(waypointSource: GeoJsonSource, linesSource: GeoJsonSource, shipSource: GeoJsonSource) {
+        waypointSource.setGeoJson(FeatureCollection.fromFeatures(getWaypointsFeatures()))
         linesSource.setGeoJson(FeatureCollection.fromFeatures(getConnectionLines()))
         shipSource.setGeoJson(getShipFeature())
     }
@@ -232,18 +232,18 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         return featureCollection
     }
 
-    fun getFlagFeatures(): List<Feature> {
-        return _flagPositions.map {
+    fun getWaypointsFeatures(): List<Feature> {
+        return _waypointPositions.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())
-                addStringProperty("icon", "flag-icon-${it.id}")
+                addStringProperty("icon", "waypoint-icon-${it.id}")
             }
         }
     }
 
     fun getConnectionLines(): List<Feature> {
         val lines = mutableListOf<Feature>()
-        val waypoints = _flagPositions.sortedBy { it.id }
+        val waypoints = _waypointPositions.sortedBy { it.id }
 
         for (i in 0 until waypoints.size - 1) {
             val start = waypoints[i]

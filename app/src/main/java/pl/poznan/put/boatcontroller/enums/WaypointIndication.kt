@@ -6,17 +6,17 @@ import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import pl.poznan.put.boatcontroller.R
 
-enum class FlagIndicationType(@DrawableRes val resId: Int) {
+enum class WaypointIndicationType(@DrawableRes val resId: Int) {
     STAR(R.drawable.ic_indication_star),
     COMPASS(R.drawable.ic_indication_compass);
 
-    fun toFlagIndication(context: Context): FlagIndication {
+    fun toWaypointIndication(context: Context): WaypointIndication {
         val drawable: Drawable = ContextCompat.getDrawable(context, resId)!!
-        return FlagIndication(drawable, this)
+        return WaypointIndication(drawable, this)
     }
 }
 
-data class FlagIndication(
+data class WaypointIndication(
     val drawable: Drawable,
-    val type: FlagIndicationType
+    val type: WaypointIndicationType
 )
