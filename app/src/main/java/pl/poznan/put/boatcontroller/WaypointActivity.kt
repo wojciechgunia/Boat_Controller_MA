@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,6 +105,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.enums.ShipDirection
@@ -184,6 +186,12 @@ class WaypointActivity : ComponentActivity() {
                 }
         }
 
+        LaunchedEffect(waypointVm.arePoiVisible) {
+            mapLibreMapState.value?.style?.getLayer("poi-layer")?.setProperties(
+                visibility(if (waypointVm.arePoiVisible) Property.VISIBLE else Property.NONE)
+            )
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             MapTab(
                 waypointVm = waypointVm,
@@ -227,17 +235,7 @@ class WaypointActivity : ComponentActivity() {
 
                 FloatingActionButton(
                     onClick = {
-                        val shipPosition = waypointVm.shipPosition.value
-                        val zoom = 32.0
-                        mapLibreMapState.value?.animateCamera(
-                            CameraUpdateFactory.newLatLngZoom(
-                                LatLng(
-                                    shipPosition.lat,
-                                    shipPosition.lon
-                                ), zoom
-                            ),
-                            cameraZoomAnimationTime * 1000
-                        )
+                        waypointVm.arePoiVisible = !waypointVm.arePoiVisible
                     },
                     shape = CircleShape,
                     modifier = Modifier
@@ -248,8 +246,11 @@ class WaypointActivity : ComponentActivity() {
                     containerColor = colorResource(id = R.color.teal_700)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = "Center Map",
+                        imageVector = if (!waypointVm.arePoiVisible)
+                            Icons.Default.Visibility
+                        else
+                            Icons.Default.VisibilityOff,
+                        contentDescription = "POI Visibility",
                         tint = Color.White
                     )
                 }
@@ -387,6 +388,7 @@ class WaypointActivity : ComponentActivity() {
                                 iconImage("poi-icon"),
                                 iconSize(waypointSizeScaling),
                                 iconAllowOverlap(true),
+                                visibility(if (waypointVm.arePoiVisible) Property.VISIBLE else Property.NONE)
                             )
                         style.addLayer(poiLayer)
 
@@ -454,7 +456,7 @@ class WaypointActivity : ComponentActivity() {
                                     )
 
                                     val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
-                                    val indicationDrawable = WaypointIndicationType.STAR.toWaypointIndication(context)
+                                    val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
 
                                     val combinedBitmap = createWaypointBitmap(
                                         waypointDrawable,
@@ -613,7 +615,7 @@ class WaypointActivity : ComponentActivity() {
 
     fun createPoiWaypoints(context: Context, style: Style) {
         val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
-        val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
+        val indicationDrawable = WaypointIndicationType.STAR.toWaypointIndication(context)
 
         val combinedBitmap = createWaypointBitmap(
             waypointDrawable,

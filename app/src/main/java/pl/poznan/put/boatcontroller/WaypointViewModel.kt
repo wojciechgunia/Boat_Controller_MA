@@ -30,6 +30,7 @@ import pl.poznan.put.boatcontroller.enums.WaypointMode
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var isToolbarOpened by mutableStateOf(false)
+
     var waypointStartCoordinates = ShipPosition(52.404633, 16.957722)
 
     private val _shipPosition = mutableStateOf<ShipPosition>(waypointStartCoordinates)
@@ -54,6 +55,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         POIObject(6, 52.40082567874097, 16.985875875771626),
     )
     var poiPositions: SnapshotStateList<POIObject> = _poiPositions
+    var arePoiVisible by mutableStateOf(false)
 
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
