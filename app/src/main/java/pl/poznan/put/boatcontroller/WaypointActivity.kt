@@ -236,6 +236,10 @@ class WaypointActivity : ComponentActivity() {
                 FloatingActionButton(
                     onClick = {
                         waypointVm.arePoiVisible = !waypointVm.arePoiVisible
+                        if (waypointVm.arePoiVisible) {
+                            val poiSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("poi-source")
+                            if (poiSource != null) waypointVm.showMapPoiSources(poiSource)
+                        }
                     },
                     shape = CircleShape,
                     modifier = Modifier
@@ -441,7 +445,6 @@ class WaypointActivity : ComponentActivity() {
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
                         waypointVm.updateMapSources(waypointsSource, waypointConnectionsSource, shipSource)
-                        waypointVm.showMapPoiSources(poiSource)
 
                         createPoiWaypoints(context, style)
 

@@ -21,12 +21,18 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import pl.poznan.put.boatcontroller.auth.ApiClient
+import pl.poznan.put.boatcontroller.auth.AuthClient
+import pl.poznan.put.boatcontroller.auth.TokenManager
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
+import pl.poznan.put.boatcontroller.dataclass.LoginRequest
+import pl.poznan.put.boatcontroller.dataclass.MissionDto
 import pl.poznan.put.boatcontroller.dataclass.POIObject
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
+import pl.poznan.put.boatcontroller.mappers.toDomain
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var isToolbarOpened by mutableStateOf(false)
@@ -46,15 +52,17 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
 
     // Points Of Interest Positions
-    private var _poiPositions = mutableStateListOf<POIObject>(
-        POIObject(1, 52.407290230659044, 16.961791682925508),
-        POIObject(2, 52.40557452887799, 16.964251055063528),
-        POIObject(3, 52.404813373903465, 16.969023183764534),
-        POIObject(4, 52.40419750664509, 16.9765630569988),
-        POIObject(5, 52.402493273130546, 16.984584841400135),
-        POIObject(6, 52.40082567874097, 16.985875875771626),
-    )
+//    private var _poiPositions = mutableStateListOf<POIObject>(
+//        POIObject(1, 52.407290230659044, 16.961791682925508),
+//        POIObject(1, 52.40557452887799, 16.964251055063528),
+//        POIObject(1, 52.404813373903465, 16.969023183764534),
+//        POIObject(1, 52.40419750664509, 16.9765630569988),
+//        POIObject(1, 52.402493273130546, 16.984584841400135),
+//        POIObject(1, 52.40082567874097, 16.985875875771626),
+//    )
+    private var _poiPositions = mutableStateListOf<POIObject>()
     var poiPositions: SnapshotStateList<POIObject> = _poiPositions
+
     var arePoiVisible by mutableStateOf(false)
 
     private val _isShipMoving = mutableStateOf(false)
@@ -72,6 +80,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _shouldFinish = MutableLiveData<Boolean>(false)
     val shouldFinish: LiveData<Boolean> = _shouldFinish
 
+    var mission: MissionDto? by mutableStateOf(null)
+
     fun initSocket() {
         SocketClientManager.setOnMessageReceivedListener { message ->
             handleServerMessage(message)
@@ -88,6 +98,31 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         addWaypoint(_shipPosition.value.lon, _shipPosition.value.lat)
+
+        // Backend łączenie się i wybór misji na razie na sztywno (id=1, name="Testowa")
+        viewModelScope.launch {
+            try {
+                val loginResponse = AuthClient.authApi.login(
+                    LoginRequest("admin", "admin123")
+                )
+                TokenManager.saveToken(getApplication(), loginResponse.access_token)
+
+                val api = ApiClient.create(getApplication())
+                mission = api.getMission(1)
+                val missionId = 1
+                Log.d("MISSION_POI_NO", "Amount of POI Points: ${mission?.pointsOfInterestsNo}")
+
+                val poiList = api.getPoiList(missionId)
+                val domainList = poiList.map { it.toDomain() }
+
+                _poiPositions.clear()
+                _poiPositions.addAll(domainList)
+                Log.d("POI_POSITIONS", _poiPositions.toString())
+
+            } catch (e: Exception) {
+                Log.e("API", "Błąd logowania", e)
+            }
+        }
     }
 
     fun handleServerMessage(message: String) {
