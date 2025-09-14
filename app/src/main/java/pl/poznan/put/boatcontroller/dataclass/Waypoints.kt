@@ -1,6 +1,7 @@
 package pl.poznan.put.boatcontroller.dataclass
 
 data class MissionDto(
+    val id: Int,
     val name: String,
     val userId: Int,
     val waypointsNo: Int,
@@ -9,19 +10,22 @@ data class MissionDto(
 )
 
 data class UserDto(
+    val id: Int,
     val login: String,
     val role: String,
     val isBlocked: Boolean
 )
 
 data class WaypointDto(
+    val id: Int,
     val missionId: Int,
-    val no: Int,
+    var no: Int,
     val lat: String,
-    val lon: String
+    val lon: String,
 )
 
 data class PointOfInterestDto(
+    val id: Int,
     val missionId: Int,
     val lat: String,
     val lon: String,
@@ -31,16 +35,35 @@ data class PointOfInterestDto(
 )
 
 data class RunningDto(
+    val id: Int,
     val missionId: Int,
     val date: String,
     val stats: String
 )
 
+data class RunningCreateRequest(
+    val missionId: Int,
+    val stats: String? = null
+)
+
 data class WaypointObject(
-    var id: Int,
+    var no: Int,
     val lon: Double,
     val lat: Double,
     var isCompleted: Boolean = false
+)
+
+data class WaypointCreateRequest(
+    val missionId: Int,
+    val no: Int,
+    val lat: String,
+    val lon: String
+)
+
+data class WaypointUpdateRequest(
+    val no: Int? = null,
+    val lat: String? = null,
+    val lon: String? = null
 )
 
 data class POIObject(

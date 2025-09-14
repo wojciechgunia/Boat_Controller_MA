@@ -170,15 +170,26 @@ class WaypointActivity : ComponentActivity() {
 
     @Composable
     fun WaypointControlScreen(waypointVm: WaypointViewModel) {
+        val context = LocalContext.current
         val mapLibreMapState = remember { mutableStateOf<MapLibreMap?>(null) }
         val shipPos = waypointVm.shipPosition
 
         LaunchedEffect(Unit) {
             snapshotFlow { waypointVm.waypointPositions.toList() to shipPos.value }
-                .collect {
-                    val waypointsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("waypoint-source")
-                    val waypointConnectionsSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("waypoint-connections-source")
-                    val shipSource = mapLibreMapState.value?.style?.getSourceAs<GeoJsonSource>("ship-source")
+                .collect { (waypoints, ship) ->
+                    val map = mapLibreMapState.value ?: return@collect
+                    val style = map.style ?: return@collect
+                    
+                    waypoints.forEach { wp ->
+                        val bitmap = getOrCreateWaypointBitmap(wp.no, context)
+                        if (style.getImage("waypoint-icon-${wp.no}") == null) {
+                            style.addImage("waypoint-icon-${wp.no}", bitmap)
+                        }
+                    }
+
+                    val waypointsSource = style.getSourceAs<GeoJsonSource>("waypoint-source")
+                    val waypointConnectionsSource = style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
+                    val shipSource = style.getSourceAs<GeoJsonSource>("ship-source")
 
                     if (waypointsSource != null && waypointConnectionsSource != null && shipSource != null) {
                         waypointVm.updateMapSources(waypointsSource, waypointConnectionsSource, shipSource)
@@ -363,10 +374,16 @@ class WaypointActivity : ComponentActivity() {
                         // WAYPOINT SOURCE & LAYER
                         // ===========================
 
-                        val waypointsSource = GeoJsonSource(
-                            "waypoint-source",
-                            FeatureCollection.fromFeatures(emptyArray())
-                        )
+                        waypointVm.waypointPositions.forEach { wp ->
+                            val bitmap = getOrCreateWaypointBitmap(
+                                wp.no, context
+                            )
+                            if (style.getImage("waypoint-icon-${wp.no}") == null) {
+                                style.addImage("waypoint-icon-${wp.no}", bitmap)
+                            }
+                        }
+
+                        val waypointsSource = GeoJsonSource("waypoint-source")
                         style.addSource(waypointsSource)
 
                         val waypointLayer = SymbolLayer("waypoint-layer", "waypoint-source")
@@ -376,6 +393,10 @@ class WaypointActivity : ComponentActivity() {
                                 iconAllowOverlap(true),
                             )
                         style.addLayer(waypointLayer)
+
+                        waypointsSource.setGeoJson(
+                            FeatureCollection.fromFeatures(waypointVm.getWaypointsFeatures())
+                        )
 
                         // ===========================
                         // POINTS OF INTEREST (POI) SOURCE & LAYER
@@ -444,8 +465,8 @@ class WaypointActivity : ComponentActivity() {
                         }
 
                         mapboxMap.uiSettings.isRotateGesturesEnabled = false
-                        waypointVm.updateMapSources(waypointsSource, waypointConnectionsSource, shipSource)
 
+                        waypointVm.updateMapSources(waypointsSource, waypointConnectionsSource, shipSource)
                         createPoiWaypoints(context, style)
 
                         mapboxMap.addOnMapClickListener { latLng ->
@@ -453,30 +474,21 @@ class WaypointActivity : ComponentActivity() {
                             Log.d("WAYPOINTMODE", "Current mode: $mode")
                             when (mode) {
                                 WaypointMode.WAYPOINT_ADD -> {
-                                    val newWaypoint = waypointVm.addWaypoint(
+                                    val waypointNo = waypointVm.getNextAvailableNo()
+                                    waypointVm.addWaypoint(
                                         latLng.longitude,
                                         latLng.latitude
                                     )
 
-                                    val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
-                                    val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
+                                    val bitmap = getOrCreateWaypointBitmap(waypointNo, context)
 
-                                    val combinedBitmap = createWaypointBitmap(
-                                        waypointDrawable,
-                                        indicationDrawable,
-                                        newWaypoint.id.toString()
-                                    )
-                                    waypointVm.setWaypointBitmap(newWaypoint.id, combinedBitmap)
-
-                                    if (style.getImage("waypoint-icon-${newWaypoint.id}") == null) {
-                                        style.addImage(
-                                            "waypoint-icon-${newWaypoint.id}",
-                                            combinedBitmap
-                                        )
+                                    if (style.getImage("waypoint-icon-${waypointNo}") == null) {
+                                        style.addImage("waypoint-icon-${waypointNo}", bitmap)
                                     }
-                                    Log.d("WAYPOINTS_COORDINATES_${newWaypoint.id}",
-                                        "(" + waypointVm.getWaypointById(newWaypoint.id)?.lat.toString() + ", " +
-                                                waypointVm.getWaypointById(newWaypoint.id)?.lon.toString() + ")"
+
+                                    Log.d("WAYPOINTS_COORDINATES_${waypointNo}",
+                                        "(" + waypointVm.getWaypointByNo(waypointNo)?.lat.toString() + ", " +
+                                                waypointVm.getWaypointByNo(waypointNo)?.lon.toString() + ")"
                                     )
                                     true
                                 }
@@ -492,11 +504,11 @@ class WaypointActivity : ComponentActivity() {
 
                                     if (features.isNotEmpty()) {
                                         val clickedFeature = features.first()
-                                        val id = clickedFeature.getStringProperty("id")
+                                        val no = clickedFeature.getStringProperty("no")
                                             ?.toIntOrNull()
 
-                                        if (id != null) {
-                                            waypointVm.removeWaypoint(id)
+                                        if (no != null) {
+                                            waypointVm.removeWaypoint(no)
                                             updateWaypointBitmaps(style)
                                         }
                                         true
@@ -506,8 +518,8 @@ class WaypointActivity : ComponentActivity() {
                                 }
 
                                 WaypointMode.WAYPOINT_MOVE -> {
-                                    val movingId = waypointVm.waypointToMoveId
-                                    if (movingId == null) {
+                                    val movingNo = waypointVm.waypointToMoveNo
+                                    if (movingNo == null) {
                                         val screenPoint =
                                             mapboxMap.projection.toScreenLocation(latLng)
                                         val features = mapboxMap.queryRenderedFeatures(
@@ -517,33 +529,33 @@ class WaypointActivity : ComponentActivity() {
 
                                         if (features.isNotEmpty()) {
                                             val clickedFeature = features.first()
-                                            val id = clickedFeature.getStringProperty("id")
+                                            val no = clickedFeature.getStringProperty("no")
                                                 ?.toIntOrNull()
-                                            if (id != null) {
-                                                if(waypointVm.getWaypointById(id)?.isCompleted == false) {
-                                                    waypointVm.waypointToMoveId = id
-                                                    val bitmap = waypointVm.waypointBitmaps[id]!!
+                                            if (no != null) {
+                                                if(waypointVm.getWaypointByNo(no)?.isCompleted == false) {
+                                                    waypointVm.waypointToMoveNo = no
+                                                    val bitmap = waypointVm.waypointBitmaps[no]!!
                                                     val selectedBitmap =
                                                         bitmap.scale(
                                                             (bitmap.width * 1.2f).toInt(),
                                                             (bitmap.height * 1.2f).toInt()
                                                         )
-                                                    style.addImage("waypoint-icon-$id", selectedBitmap)
+                                                    style.addImage("waypoint-icon-$no", selectedBitmap)
                                                 }
                                             }
                                         }
                                         true
                                     } else {
                                         waypointVm.moveWaypoint(
-                                            movingId,
+                                            movingNo,
                                             latLng.longitude,
                                             latLng.latitude
                                         )
 
-                                        val bitmap = waypointVm.waypointBitmaps[movingId]!!
-                                        style.addImage("waypoint-icon-$movingId", bitmap)
+                                        val bitmap = waypointVm.waypointBitmaps[movingNo]!!
+                                        style.addImage("waypoint-icon-$movingNo", bitmap)
 
-                                        waypointVm.waypointToMoveId = null
+                                        waypointVm.waypointToMoveNo = null
                                         true
                                     }
                                 }
@@ -828,10 +840,28 @@ class WaypointActivity : ComponentActivity() {
         }
     }
 
+    fun getOrCreateWaypointBitmap(
+        no: Int,
+        context: Context,
+    ): Bitmap {
+        waypointVm.waypointBitmaps[no]?.let { return it }
+
+        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+        val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
+
+        val bitmap = createWaypointBitmap(
+            waypointDrawable,
+            indicationDrawable,
+            no.toString()
+        )
+        waypointVm.setWaypointBitmap(no, bitmap)
+        return bitmap
+    }
+
     fun updateWaypointBitmaps(style: Style) {
-        waypointVm.waypointBitmaps.forEach { (idx, bitmap) ->
+        waypointVm.waypointBitmaps.forEach { (no, bitmap) ->
             style.addImage(
-                "waypoint-icon-$idx",
+                "waypoint-icon-$no",
                 bitmap
             )
         }

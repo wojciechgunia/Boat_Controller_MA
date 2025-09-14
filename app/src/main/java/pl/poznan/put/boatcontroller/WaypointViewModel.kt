@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,24 +23,29 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.auth.ApiClient
+import pl.poznan.put.boatcontroller.auth.ApiService
 import pl.poznan.put.boatcontroller.auth.AuthClient
 import pl.poznan.put.boatcontroller.auth.TokenManager
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
 import pl.poznan.put.boatcontroller.dataclass.LoginRequest
-import pl.poznan.put.boatcontroller.dataclass.MissionDto
 import pl.poznan.put.boatcontroller.dataclass.POIObject
+import pl.poznan.put.boatcontroller.dataclass.RunningCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
+import pl.poznan.put.boatcontroller.dataclass.WaypointCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
+import pl.poznan.put.boatcontroller.dataclass.WaypointUpdateRequest
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
+    private var backendApi: ApiService? = null
+    var missionId by mutableIntStateOf(1)
+        private set
+
     var isToolbarOpened by mutableStateOf(false)
 
-    var waypointStartCoordinates = ShipPosition(52.404633, 16.957722)
-
-    private val _shipPosition = mutableStateOf<ShipPosition>(waypointStartCoordinates)
+    private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
     val shipPosition: MutableState<ShipPosition> = _shipPosition
 
     private var _currentShipDirection = mutableStateOf<ShipDirection>(ShipDirection.DEFAULT)
@@ -52,14 +58,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
 
     // Points Of Interest Positions
-//    private var _poiPositions = mutableStateListOf<POIObject>(
-//        POIObject(1, 52.407290230659044, 16.961791682925508),
-//        POIObject(1, 52.40557452887799, 16.964251055063528),
-//        POIObject(1, 52.404813373903465, 16.969023183764534),
-//        POIObject(1, 52.40419750664509, 16.9765630569988),
-//        POIObject(1, 52.402493273130546, 16.984584841400135),
-//        POIObject(1, 52.40082567874097, 16.985875875771626),
-//    )
     private var _poiPositions = mutableStateListOf<POIObject>()
     var poiPositions: SnapshotStateList<POIObject> = _poiPositions
 
@@ -68,7 +66,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
 
-    var waypointToMoveId: Int? by mutableStateOf(null)
+    var waypointToMoveNo: Int? by mutableStateOf(null)
     var waypointMode by mutableStateOf<WaypointMode?>(null)
         private set
 
@@ -80,7 +78,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _shouldFinish = MutableLiveData<Boolean>(false)
     val shouldFinish: LiveData<Boolean> = _shouldFinish
 
-    var mission: MissionDto? by mutableStateOf(null)
 
     fun initSocket() {
         SocketClientManager.setOnMessageReceivedListener { message ->
@@ -97,30 +94,38 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 _shouldFinish.postValue(true)
             }
         }
-        addWaypoint(_shipPosition.value.lon, _shipPosition.value.lat)
 
-        // Backend łączenie się i wybór misji na razie na sztywno (id=1, name="Testowa")
         viewModelScope.launch {
             try {
-                val loginResponse = AuthClient.authApi.login(
-                    LoginRequest("admin", "admin123")
-                )
-                TokenManager.saveToken(getApplication(), loginResponse.access_token)
+                loginAndInitApi()
+                loadMission()
+                backendApi?.let { api ->
+                    val list = api.getWaypointsList(1).map { it.toDomain() }
 
-                val api = ApiClient.create(getApplication())
-                mission = api.getMission(1)
-                val missionId = 1
-                Log.d("MISSION_POI_NO", "Amount of POI Points: ${mission?.pointsOfInterestsNo}")
-
-                val poiList = api.getPoiList(missionId)
-                val domainList = poiList.map { it.toDomain() }
-
-                _poiPositions.clear()
-                _poiPositions.addAll(domainList)
-                Log.d("POI_POSITIONS", _poiPositions.toString())
-
+                    if (list.isNotEmpty()) {
+                        _waypointPositions.clear()
+                        _waypointPositions.addAll(list)
+                    }
+                }
             } catch (e: Exception) {
                 Log.e("API", "Błąd logowania", e)
+            }
+        }
+    }
+
+    private suspend fun loginAndInitApi() {
+        val loginResponse = AuthClient.authApi.login(LoginRequest("admin", "admin123"))
+        TokenManager.saveToken(getApplication(), loginResponse.access_token)
+        backendApi = ApiClient.create(getApplication())
+    }
+
+    fun loadMission() {
+        viewModelScope.launch {
+            backendApi?.let { api ->
+                val poiList = api.getPoiList(missionId).map { it.toDomain() }
+
+                _poiPositions.clear()
+                _poiPositions.addAll(poiList)
             }
         }
     }
@@ -138,7 +143,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             val data = message.substringAfter("WCW:").split(":")
             val id = data[0].toInt()
 
-            val index = _waypointPositions.indexOfFirst { it.id == id }
+            val index = _waypointPositions.indexOfFirst { it.no == id }
             if (index != -1) {
                 _waypointPositions[index] = _waypointPositions[index].copy(isCompleted = true)
             }
@@ -150,7 +155,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startShipSimulation() {
-        val waypoints = waypointPositions.sortedBy { it.id }
+        val waypoints = waypointPositions.sortedBy { it.no }
         if (waypoints.isEmpty()) return
 
         shipMovingJob = viewModelScope.launch {
@@ -189,10 +194,22 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             ShipDirection.REVERSE -> ShipDirection.DEFAULT
         }
     }
+
     fun toggleSimulation() {
         if (isShipMoving.value) {
             stopShipSimulation()
         } else {
+            val req = RunningCreateRequest(
+                missionId = missionId
+            )
+
+            viewModelScope.launch {
+                try {
+                    backendApi?.createRunning(req)
+                } catch (e: Exception) {
+                    Log.e("API", "Błąd zapisywania przepływu statku (running)", e)
+                }
+            }
             startShipSimulation()
         }
     }
@@ -206,13 +223,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         shipMovingJob = null
     }
 
-    fun getNextAvailableId(): Int {
-        val usedIds = _waypointPositions.map { it.id }.toSet()
-        var id = 0
-        while (id in usedIds) {
-            id++
+    fun getNextAvailableNo(): Int {
+        val usedIds = _waypointPositions.map { it.no }.toSet()
+        var no = 1
+        while (no in usedIds) {
+            no++
         }
-        return id
+        return no
     }
 
     fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
@@ -221,44 +238,94 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
 //    fun hasBitmap(id: Int) = _waypointBitmaps.containsKey(id)
 
-    fun addWaypoint(lon: Double, lat: Double): WaypointObject {
-        val id = getNextAvailableId()
-        val waypoint = WaypointObject(id, lon, lat)
-        _waypointPositions.add(waypoint)
-        val message = "WAP:${id}:${lat}:${lon}"
-        SocketClientManager.sendMessage(message)
-        println("Sending via socket: $message")
-        return waypoint
-    }
+    fun addWaypoint(lon: Double, lat: Double) {
+        val no = getNextAvailableNo()
+        viewModelScope.launch {
+            try {
+                val req = WaypointCreateRequest(
+                    missionId = missionId,
+                    no = no,
+                    lon = lon.toString(),
+                    lat = lat.toString()
+                )
 
-    fun removeWaypoint(id: Int) {
-        _waypointPositions.removeAll { it.id == id }
-        val message = "WDP:${id}"
-        SocketClientManager.sendMessage(message)
-        println("Sending via socket: $message")
-        reindexWaypoints(id)
-    }
+                backendApi?.createWaypoint(req)
 
-    fun moveWaypoint(id: Int, newLon: Double, newLat: Double) {
-        val index = _waypointPositions.indexOfFirst { it.id == id }
-        if (index != -1) {
-            _waypointPositions[index] = _waypointPositions[index].copy(lon = newLon, lat = newLat)
-        }
-        val message = "WUP:${id}:${newLat}:${newLon}"
-        SocketClientManager.sendMessage(message)
-        println("Sending via socket: $message")
-    }
-
-    fun reindexWaypoints(removedId: Int) {
-        _waypointPositions.forEach { wp ->
-            if (wp.id > removedId) {
-                wp.id -= 1
+                val waypoint = WaypointObject(no, lon, lat)
+                _waypointPositions.add(waypoint)
+                val message = "WAP:${no}:${lat}:${lon}"
+                SocketClientManager.sendMessage(message)
+                println("Sending via socket: $message")
+            } catch (e: Exception) {
+                Log.e("API", "Błąd dodawania waypointu", e)
             }
         }
     }
 
-    fun getWaypointById(id: Int): WaypointObject? {
-        return waypointPositions.find { it.id == id }
+    fun removeWaypoint(no: Int) {
+        viewModelScope.launch {
+            try {
+                val waypoints = backendApi?.getWaypointsList(missionId)?.toMutableList() ?: mutableListOf()
+                val targetWp = waypoints.firstOrNull { it.no == no }
+
+                if (targetWp != null) {
+                    backendApi?.deleteWaypoint(targetWp.id)
+                    waypoints.remove(targetWp)
+
+                    waypoints.filter { it.no > no }.forEach { wp ->
+                        backendApi?.updateWaypoint(
+                            wp.id,
+                            WaypointUpdateRequest(no = wp.no - 1)
+                        )
+                        wp.no = wp.no - 1
+                    }
+
+                    _waypointPositions.clear()
+                    _waypointPositions.addAll(waypoints.map { it.toDomain() })
+
+                    val message = "WDP:${no}"
+                    SocketClientManager.sendMessage(message)
+                    println("Sending via socket: $message")
+                } else {
+                    Log.w("API", "Nie znaleziono waypointu o numerze $no")
+                }
+            } catch (e: Exception) {
+                Log.e("API", "Błąd usuwania waypointu", e)
+            }
+        }
+    }
+
+    fun moveWaypoint(no: Int, newLon: Double, newLat: Double) {
+        viewModelScope.launch {
+            try {
+                val waypoints = backendApi?.getWaypointsList(missionId)?.toMutableList() ?: mutableListOf()
+                val targetWp = waypoints.firstOrNull { it.no == no }
+
+                if (targetWp != null) {
+                    val req = WaypointUpdateRequest(
+                        lon = newLon.toString(),
+                        lat = newLat.toString()
+                    )
+                    backendApi?.updateWaypoint(targetWp.id, req)
+
+                    val index = _waypointPositions.indexOfFirst { it.no == no }
+                    if (index != -1) {
+                        _waypointPositions[index] = _waypointPositions[index].copy(lon = newLon, lat = newLat)
+                    }
+                    val message = "WUP:${no}:${newLat}:${newLon}"
+                    SocketClientManager.sendMessage(message)
+                    println("Sending via socket: $message")
+                } else {
+                    Log.w("API", "Nie znaleziono waypointu o numerze $no")
+                }
+            } catch (e: Exception) {
+                Log.e("API", "Błąd przesuwania waypointu", e)
+            }
+        }
+    }
+
+    fun getWaypointByNo(no: Int): WaypointObject? {
+        return waypointPositions.find { it.no == no }
     }
 
     fun toggleWaypointEditMode(mode: WaypointMode?) {
@@ -289,8 +356,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun getWaypointsFeatures(): List<Feature> {
         return _waypointPositions.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
-                addStringProperty("id", it.id.toString())
-                addStringProperty("icon", "waypoint-icon-${it.id}")
+                addStringProperty("no", it.no.toString())
+                addStringProperty("icon", "waypoint-icon-${it.no}")
             }
         }
     }
@@ -305,7 +372,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getConnectionLines(): List<Feature> {
         val lines = mutableListOf<Feature>()
-        val waypoints = _waypointPositions.sortedBy { it.id }
+        val waypoints = _waypointPositions.sortedBy { it.no }
 
         for (i in 0 until waypoints.size - 1) {
             val start = waypoints[i]

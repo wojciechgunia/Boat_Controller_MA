@@ -6,11 +6,19 @@ import pl.poznan.put.boatcontroller.dataclass.LoginRequest
 import pl.poznan.put.boatcontroller.dataclass.LoginResponse
 import pl.poznan.put.boatcontroller.dataclass.MissionDto
 import pl.poznan.put.boatcontroller.dataclass.PointOfInterestDto
+import pl.poznan.put.boatcontroller.dataclass.RunningCreateRequest
+import pl.poznan.put.boatcontroller.dataclass.RunningDto
+import pl.poznan.put.boatcontroller.dataclass.WaypointCreateRequest
+import pl.poznan.put.boatcontroller.dataclass.WaypointDto
+import pl.poznan.put.boatcontroller.dataclass.WaypointUpdateRequest
+import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 
 interface AuthApi {
@@ -49,8 +57,38 @@ object ApiClient {
 
 interface ApiService {
     @GET("missions/{id}")
-    suspend fun getMission(@Path("id") id: Int): MissionDto
+    suspend fun getMission(
+        @Path("id") id: Int
+    ): MissionDto
 
     @GET("pois/{mission_id}")
-    suspend fun getPoiList(@Path("mission_id") id: Int): List<PointOfInterestDto>
+    suspend fun getPoiList(
+        @Path("mission_id") id: Int
+    ): List<PointOfInterestDto>
+
+    @POST("runnings")
+    suspend fun createRunning(
+        @Body request: RunningCreateRequest
+    ): RunningDto
+
+    @POST("waypoints")
+    suspend fun createWaypoint(
+        @Body request: WaypointCreateRequest
+    ): Response<Unit>
+
+    @GET("waypoints/{mission_id}")
+    suspend fun getWaypointsList(
+        @Path("mission_id") id: Int
+    ): List<WaypointDto>
+
+    @PUT("waypoints/{waypoint_id}")
+    suspend fun updateWaypoint(
+        @Path("waypoint_id") id: Int,
+        @Body request: WaypointUpdateRequest
+    ): WaypointDto
+
+    @DELETE("waypoints/{waypoint_id}")
+    suspend fun deleteWaypoint(
+        @Path("waypoint_id") id: Int,
+    ): Response<Unit>
 }
