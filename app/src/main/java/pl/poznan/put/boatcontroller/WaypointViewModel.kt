@@ -17,7 +17,6 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
@@ -51,13 +50,16 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var _currentShipDirection = mutableStateOf<ShipDirection>(ShipDirection.DEFAULT)
     var currentShipDirection: MutableState<ShipDirection> = _currentShipDirection
 
-    private val _waypointBitmaps = mutableStateMapOf<Int, Bitmap>()
-    val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
-
     private var _waypointPositions = mutableStateListOf<WaypointObject>()
     var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
 
-    // Points Of Interest Positions
+    private val _waypointBitmaps = mutableStateMapOf<Int, Bitmap>()
+    val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
+
+    var waypointToMoveNo: Int? by mutableStateOf(null)
+    var waypointMode by mutableStateOf<WaypointMode?>(null)
+        private set
+
     private var _poiPositions = mutableStateListOf<POIObject>()
     var poiPositions: SnapshotStateList<POIObject> = _poiPositions
 
@@ -65,19 +67,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
-
-    var waypointToMoveNo: Int? by mutableStateOf(null)
-    var waypointMode by mutableStateOf<WaypointMode?>(null)
-        private set
-
     private var shipMovingJob: Job? = null
-
-    private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
-    val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
     private val _shouldFinish = MutableLiveData<Boolean>(false)
     val shouldFinish: LiveData<Boolean> = _shouldFinish
 
+    private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
+    val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
     fun initSocket() {
         SocketClientManager.setOnMessageReceivedListener { message ->
@@ -200,7 +196,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             stopShipSimulation()
         } else {
             val req = RunningCreateRequest(
-                missionId = missionId
+                missionId = missionId,
+                stats = "test"
             )
 
             viewModelScope.launch {
@@ -216,14 +213,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onSimulationFinished() {
         _waypointPositions.clear()
-        addWaypoint(_shipPosition.value.lon, _shipPosition.value.lat)
         _isShipMoving.value = false
         _currentShipDirection.value = ShipDirection.DEFAULT
         shipMovingJob?.cancel()
         shipMovingJob = null
     }
 
-    fun getNextAvailableNo(): Int {
+    fun getNextAvailableWaypointNo(): Int {
         val usedIds = _waypointPositions.map { it.no }.toSet()
         var no = 1
         while (no in usedIds) {
@@ -232,14 +228,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         return no
     }
 
-    fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
-        _waypointBitmaps[id] = bitmap
+    fun getWaypointByNo(no: Int): WaypointObject? {
+        return waypointPositions.find { it.no == no }
     }
 
-//    fun hasBitmap(id: Int) = _waypointBitmaps.containsKey(id)
-
     fun addWaypoint(lon: Double, lat: Double) {
-        val no = getNextAvailableNo()
+        val no = getNextAvailableWaypointNo()
         viewModelScope.launch {
             try {
                 val req = WaypointCreateRequest(
@@ -324,8 +318,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun getWaypointByNo(no: Int): WaypointObject? {
-        return waypointPositions.find { it.no == no }
+    fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
+        _waypointBitmaps[id] = bitmap
     }
 
     fun toggleWaypointEditMode(mode: WaypointMode?) {
@@ -336,16 +330,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateMapSources(waypointSource: GeoJsonSource, waypointConnectionsSource: GeoJsonSource, shipSource: GeoJsonSource) {
-        waypointSource.setGeoJson(FeatureCollection.fromFeatures(getWaypointsFeatures()))
-        waypointConnectionsSource.setGeoJson(FeatureCollection.fromFeatures(getConnectionLines()))
-        shipSource.setGeoJson(getShipFeature())
-    }
-
-    fun showMapPoiSources(poiSource: GeoJsonSource) {
-        poiSource.setGeoJson(FeatureCollection.fromFeatures(getPoiFeatures()))
-    }
-
     fun getShipFeature(): FeatureCollection? {
         val point = Point.fromLngLat(shipPosition.value.lon, shipPosition.value.lat)
         val feature = Feature.fromGeometry(point)
@@ -353,7 +337,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         return featureCollection
     }
 
-    fun getWaypointsFeatures(): List<Feature> {
+    fun getWaypointsFeature(): List<Feature> {
         return _waypointPositions.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("no", it.no.toString())
@@ -362,7 +346,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun getPoiFeatures(): List<Feature> {
+    fun getPoiFeature(): List<Feature> {
         return _poiPositions.map {
             Feature.fromGeometry(Point.fromLngLat(it.lat, it.lon)).apply {
                 addStringProperty("icon", "poi-icon")
@@ -370,9 +354,20 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun getConnectionLines(): List<Feature> {
+    fun getConnectionLinesFeature(): List<Feature> {
         val lines = mutableListOf<Feature>()
         val waypoints = _waypointPositions.sortedBy { it.no }
+
+        waypoints.firstOrNull()?.let { firstWp ->
+            val shipPos = _shipPosition.value
+            val initShipLine = LineString.fromLngLats(
+                listOf(
+                    Point.fromLngLat(shipPos.lon, shipPos.lat),
+                    Point.fromLngLat(firstWp.lon, firstWp.lat)
+                )
+            )
+            lines.add(Feature.fromGeometry(initShipLine))
+        }
 
         for (i in 0 until waypoints.size - 1) {
             val start = waypoints[i]
@@ -389,12 +384,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         return lines
     }
 
-    fun sendMessage(message: String) {
-        SocketClientManager.sendMessage(message)
-    }
-
     fun saveCameraPosition(lat: Double, lng: Double, zoom: Double) {
         _cameraPosition.value = CameraPositionState(lat, lng, zoom)
+    }
+
+    fun sendMessage(message: String) {
+        SocketClientManager.sendMessage(message)
     }
 }
 

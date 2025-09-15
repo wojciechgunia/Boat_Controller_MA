@@ -4,7 +4,10 @@ import android.content.Context
 import okhttp3.OkHttpClient
 import pl.poznan.put.boatcontroller.dataclass.LoginRequest
 import pl.poznan.put.boatcontroller.dataclass.LoginResponse
+import pl.poznan.put.boatcontroller.dataclass.MissionCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.MissionDto
+import pl.poznan.put.boatcontroller.dataclass.POICreateRequest
+import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.PointOfInterestDto
 import pl.poznan.put.boatcontroller.dataclass.RunningCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.RunningDto
@@ -56,21 +59,27 @@ object ApiClient {
 }
 
 interface ApiService {
-    @GET("missions/{id}")
-    suspend fun getMission(
-        @Path("id") id: Int
+    // Mission endpoints
+    @POST("missions")
+    suspend fun createMission(
+        @Body request: MissionCreateRequest
+    ): Response<Unit>
+
+    @GET("missions/{mission_id}")
+    suspend fun getMissionData(
+        @Path("mission_id") missionId: Int
     ): MissionDto
 
-    @GET("pois/{mission_id}")
-    suspend fun getPoiList(
-        @Path("mission_id") id: Int
-    ): List<PointOfInterestDto>
+    @GET("missions")
+    suspend fun getMissionList(): List<MissionDto>
 
-    @POST("runnings")
-    suspend fun createRunning(
-        @Body request: RunningCreateRequest
-    ): RunningDto
+    @DELETE("missions/{mission_id}")
+    suspend fun deleteMission(
+        @Path("mission_id") missionId: Int
+    ): Response<Unit>
 
+
+    // Waypoints endpoints
     @POST("waypoints")
     suspend fun createWaypoint(
         @Body request: WaypointCreateRequest
@@ -78,17 +87,57 @@ interface ApiService {
 
     @GET("waypoints/{mission_id}")
     suspend fun getWaypointsList(
-        @Path("mission_id") id: Int
+        @Path("mission_id") missionId: Int
     ): List<WaypointDto>
 
     @PUT("waypoints/{waypoint_id}")
     suspend fun updateWaypoint(
-        @Path("waypoint_id") id: Int,
+        @Path("waypoint_id") waypointId: Int,
         @Body request: WaypointUpdateRequest
     ): WaypointDto
 
     @DELETE("waypoints/{waypoint_id}")
     suspend fun deleteWaypoint(
-        @Path("waypoint_id") id: Int,
+        @Path("waypoint_id") waypointId: Int,
+    ): Response<Unit>
+
+
+    // Runnings endpoints
+    @POST("runnings")
+    suspend fun createRunning(
+        @Body request: RunningCreateRequest
+    ): Response<Unit>
+
+    @GET("runnings/{mission_id}/last")
+    suspend fun getLastRunning(
+        @Path("mission_id") missionId: Int
+    ): RunningDto
+
+    @GET("runnings/{mission_id}")
+    suspend fun getRunningsList(
+        @Path("mission_id") missionId: Int
+    ): List<RunningDto>
+
+
+    // POI endpoints
+    @POST("pois")
+    suspend fun createPoi(
+        @Body request: POICreateRequest
+    ): Response<Unit>
+
+    @GET("pois/{mission_id}")
+    suspend fun getPoiList(
+        @Path("mission_id") missionId: Int
+    ): List<PointOfInterestDto>
+
+    @PUT("pois")
+    suspend fun updatePoi(
+        @Path("poi_id") poiId: Int,
+        @Body request: POIUpdateRequest
+    ): PointOfInterestDto
+
+    @DELETE("pois")
+    suspend fun deletePoi(
+        @Path("poi_id") poiId: Int
     ): Response<Unit>
 }

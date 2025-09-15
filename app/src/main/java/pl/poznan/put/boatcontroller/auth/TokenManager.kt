@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 
 object TokenManager {
-    private const val PREFS_NAME = "app_prefs"
+    private const val PREFS_NAME = "bc_prefs"
     private const val TOKEN_KEY = "token"
 
     fun saveToken(context: Context, token: String) {
