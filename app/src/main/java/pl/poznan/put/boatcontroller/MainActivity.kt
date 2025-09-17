@@ -3,10 +3,18 @@ package pl.poznan.put.boatcontroller
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,16 +27,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
@@ -48,24 +68,20 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import pl.poznan.put.boatcontroller.data.UserData
+import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
+import pl.poznan.put.boatcontroller.dataclass.ShipOption
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.PrintWriter
-import java.net.Socket
 
 class MainActivity : ComponentActivity() {
     private val mainVm by viewModels<MainViewModel>()
@@ -73,7 +89,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
-        mainVm.loadUserData()
         enableEdgeToEdge()
         setContent {
             RequestLocationPermission()
@@ -148,22 +163,13 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            if (mainVm.isLoggedIn) {
-                                MenuButton(
-                                    "Disconnect",
-                                    R.drawable.bc_disconnect,
-                                    navController,
-                                    navDest = "disconnect",
-                                    mainVm = mainVm
-                                )
-                            } else {
-                                MenuButton(
-                                    "Connection",
-                                    R.drawable.bc_connect,
-                                    navController,
-                                    navDest = "connection",
-                                )
-                            }
+                            MenuButton(
+                                "Connection",
+                                R.drawable.bc_connect,
+                                navController,
+                                navDest = "connection",
+                            )
+
                             MenuButton(
                                 "Controller",
                                 R.drawable.bc_controller,
@@ -183,7 +189,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 R.drawable.bc_vr,
                                 navController,
                                 mainVm.isLoggedIn,
-                                navDest = "vrmode",
+                                navDest = "vr_mode",
                                 mainVm = mainVm
                             )
                             MenuButton(
@@ -214,37 +220,36 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                     }
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    if (mainVm.isLoggedIn) {
-                        MenuButton(
-                            "Disconnect",
-                            R.drawable.bc_disconnect,
-                            navController,
-                            navDest = "disconnect",
-                            mainVm = mainVm
-                        )
-                    } else {
-                        MenuButton(
-                            "Connection",
-                            R.drawable.bc_connect,
-                            navController,
-                            navDest = "connection",
-                        )
-                    }
+                    MenuButton(
+                        "Connection",
+                        R.drawable.bc_connect,
+                        navController,
+                        navDest = "connection",
+                    )
 
-                    MenuButton("Controller", R.drawable.bc_controller, navController, mainVm.isLoggedIn, navDest = "controller", mainVm = mainVm)
+                    MenuButton(
+                        "Controller",
+                        R.drawable.bc_controller,
+                        navController,
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
+                        navDest = "controller",
+                        mainVm = mainVm
+                    )
+
                     MenuButton(
                         "VR Cam",
                         R.drawable.bc_vr,
                         navController,
-                        mainVm.isLoggedIn,
-                        navDest = "vrmode",
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
+                        navDest = "vr_mode",
                         mainVm = mainVm
                     )
+
                     MenuButton(
                       "Waypoint",
                       R.drawable.bc_waypoint,
                       navController,
-                      mainVm.isLoggedIn,
+                      mainVm.isLoggedIn && mainVm.selectedMission.name != "",
                       navDest = "waypoint",
                       mainVm = mainVm,
                   )
@@ -268,24 +273,16 @@ fun MenuButton(
         onClick = {
             if (navDest != null && navDest == "connection") {
                 navController.navigate(navDest)
-            } else if (navDest != null && navDest == "disconnect") {
-                if (mainVm != null) {
-                    mainVm.logout()
-                    mainVm.updateLoggedIn(false)
-                }
             } else if (navDest != null && navDest == "waypoint") {
                 if (mainVm != null) {
-                    mainVm.sendMessage("SCM:WPS")
                     context.startActivity(Intent(context, WaypointActivity::class.java), null)
                 }
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {
-                    mainVm.sendMessage("SCM:MAP")
                     context.startActivity(Intent(context, ControllerActivity::class.java), null)
                 }
-            } else if (navDest != null && navDest == "vrmode") {
+            } else if (navDest != null && navDest == "vr_mode") {
                 if (mainVm != null) {
-                    mainVm.sendMessage("SCM:VRM")
                     context.startActivity(Intent(context, VRActivity::class.java), null)
                 }
             }
@@ -296,6 +293,10 @@ fun MenuButton(
             .height(100.dp),
         shape = RoundedCornerShape(10.dp),
         enabled = enabled,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF4170A6),
+            contentColor = Color.White
+        ),
     ) {
         Text(text = text, fontSize = 10.em, modifier = Modifier.padding(end = 10.dp))
         Icon(
@@ -314,20 +315,12 @@ fun ConnectionContent(navController: NavController, mainVm: MainViewModel) {
 
 @Composable
 fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
-    var usernameError by remember { mutableStateOf<String?>(null) }
-    var passwordError by remember { mutableStateOf<String?>(null) }
-
-    var serverIp = mainVm.serverIp
-    var serverPort = mainVm.serverPort
-    var username = mainVm.username
-    var password = mainVm.password
-
-    var showDialog by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(0.dp, 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
@@ -337,7 +330,7 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 IconButton(
-                    onClick = { navController.popBackStack() }
+                    onClick = { navController.navigate("home") }
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.bc_back),
@@ -351,377 +344,506 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
                 Spacer(modifier = Modifier.width(2.dp))
             }
         }
-
         item {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                if(isLandscape()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row (
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ){
-                            Column(
-                                modifier = Modifier.weight(1f).fillMaxHeight(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // Server IP
-                                OutlinedTextField(
-                                    value = serverIp,
-                                    onValueChange = { mainVm.updateServerIP(it) },
-                                    label = { Text("Server IP") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Username
-                                OutlinedTextField(
-                                    value = username,
-                                    onValueChange = {
-                                        mainVm.updateUsername(it)
-                                        usernameError = validateUsername(it)
-                                    },
-                                    label = { Text("Username") },
-                                    isError = usernameError != null,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                if (usernameError != null) {
-                                    Text(
-                                        usernameError!!,
-                                        color = Color.Red,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Column(
-                                modifier = Modifier.weight(1f).fillMaxHeight(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // Server Port
-                                OutlinedTextField(
-                                    value = serverPort,
-                                    onValueChange = { mainVm.updateServerPort(it) },
-                                    label = { Text("Server Port") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Password
-                                OutlinedTextField(
-                                    value = password,
-                                    onValueChange = {
-                                        mainVm.updatePassword(it)
-                                        passwordError = validatePassword(it)
-                                    },
-                                    label = { Text("Password") },
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    isError = passwordError != null,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                if (passwordError != null) {
-                                    Text(
-                                        passwordError!!,
-                                        color = Color.Red,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
-                        }
-                        //Remember connection data
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = mainVm.isRemembered,
-                                onCheckedChange = { mainVm.updateIsRemembered(it) }
-                            )
-                            Text("Remember connection data")
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        var isLoading by remember { mutableStateOf(false) }
-
-                        Button(
-                            onClick = {
-                                if (mainVm.isRemembered) {
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        mainVm.changeUserData(
-                                            userData = UserData(
-                                                1,
-                                                mainVm.username,
-                                                mainVm.password,
-                                                mainVm.serverIp,
-                                                mainVm.serverPort,
-                                                mainVm.isRemembered
-                                            )
-                                        )
-                                    }
-                                } else {
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        mainVm.changeIsRemembered(false)
-                                    }
-                                }
-
-                                usernameError = validateUsername(mainVm.username)
-                                passwordError = validatePassword(mainVm.password)
-
-                                if (usernameError == null && passwordError == null) {
-                                    isLoading = true
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        val result =
-                                            loginToServer(
-                                                mainVm,
-                                                serverIp,
-                                                serverPort,
-                                                username,
-                                                password
-                                            )
-                                        withContext(Dispatchers.Main) {
-                                            isLoading = false
-                                            //                                    println(result)
-                                            mainVm.updateLoggedIn(result)
-                                            if (result == false) {
-                                                showDialog = true
-                                            } else {
-                                                navController.navigate("home")
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = !isLoading,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .height(60.dp),
-                            shape = RoundedCornerShape(10.dp),
-                        ) {
-                            Text(
-                                if (isLoading) "Connecting..." else "Connect",
-                                fontSize = 6.em
-                            )
-                        }
-                    }
-
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (!mainVm.isLoggedIn) {
+                    LoginForm(
+                        mainVm = mainVm,
+                        onConnect = { mainVm.updateLoggedIn(true); },
+                        onShowSettings = { showSettings = true }
+                    )
                 } else {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // Server IP
-                        OutlinedTextField(
-                            value = serverIp,
-                            onValueChange = { mainVm.updateServerIP(it) },
-                            label = { Text("Server IP") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Server Port
-                        OutlinedTextField(
-                            value = serverPort,
-                            onValueChange = { mainVm.updateServerPort(it) },
-                            label = { Text("Server Port") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Username
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = {
-                                mainVm.updateUsername(it)
-                                usernameError = validateUsername(it)
-                            },
-                            label = { Text("Username") },
-                            isError = usernameError != null,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        if (usernameError != null) {
-                            Text(
-                                usernameError!!,
-                                color = Color.Red,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Password
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = {
-                                mainVm.updatePassword(it)
-                                passwordError = validatePassword(it)
-                            },
-                            label = { Text("Password") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            isError = passwordError != null,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (passwordError != null) {
-                            Text(
-                                passwordError!!,
-                                color = Color.Red,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        //Remember connection data
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = mainVm.isRemembered,
-                                onCheckedChange = { mainVm.updateIsRemembered(it) }
-                            )
-                            Text("Remember connection data")
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        var isLoading by remember { mutableStateOf(false) }
-
-                        Button(
-                            onClick = {
-                                if (mainVm.isRemembered) {
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        mainVm.changeUserData(
-                                            userData = UserData(
-                                                1,
-                                                mainVm.username,
-                                                mainVm.password,
-                                                mainVm.serverIp,
-                                                mainVm.serverPort,
-                                                mainVm.isRemembered
-                                            )
-                                        )
-                                    }
-                                } else {
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        mainVm.changeIsRemembered(false)
-                                    }
-                                }
-
-                                usernameError = validateUsername(mainVm.username)
-                                passwordError = validatePassword(mainVm.password)
-
-                                if (usernameError == null && passwordError == null) {
-                                    isLoading = true
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        val result =
-                                            loginToServer(
-                                                mainVm,
-                                                serverIp,
-                                                serverPort,
-                                                username,
-                                                password
-                                            )
-                                        withContext(Dispatchers.Main) {
-                                            isLoading = false
-                                            mainVm.updateLoggedIn(result)
-                                            if (result == false) {
-                                                showDialog = true
-                                            } else {
-                                                navController.navigate("home")
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = !isLoading,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .height(60.dp),
-                            shape = RoundedCornerShape(10.dp),
-                        ) {
-                            Text(
-                                if (isLoading) "Connecting..." else "Connect",
-                                fontSize = 6.em
-                            )
-                        }
-                    }
+                    MissionForm(
+                        mainVm = mainVm,
+                        onChangeSelectedMission = { navController.navigate("home") },
+                        onDisconnect = { mainVm.updateLoggedIn(false) }
+                    )
                 }
+
+                SettingsPanel(
+                    mainVm = mainVm,
+                    visible = showSettings,
+                    onClose = { showSettings = false }
+                )
             }
         }
     }
+}
 
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Błąd logowania") },
-            text = { Text("Połączenie nie powiodło się lub dostęp został odrzucony.") },
-            confirmButton = {
-                Button(onClick = { showDialog = false }) {
-                    Text("Close")
-                }
-            }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShipSelect(mainVm: MainViewModel) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedText by remember { mutableStateOf("") }
+    var ships = emptyList<ShipOption>()
+    if(mainVm.ships.isNotEmpty()) {
+        ships = (mainVm.ships.map { ship ->
+            val role = if (ship.connections == 0) "Captain" else "Observer"
+            ShipOption(
+                name = ship.name,
+                role = role,
+            )
+        } + ShipOption(
+            name = "Demo",
+            role = "Captain",
+        ))
+    } else {
+        ships = (ships + ShipOption(
+            name = "Demo",
+            role = "Captain",
+        ))
+    }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = selectedText,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Select ship") },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryEditable)
+                .fillMaxWidth()
         )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            ships.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(option.name)
+                            if (option.role == "Captain") {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.controller),
+                                    contentDescription = "Captain"
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.bc_visibility),
+                                    contentDescription = "Observer"
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        selectedText = "${option.name} (${option.role})"
+                        mainVm.updateSelectedShip(option.name, option.role)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 
-// === Walidatory ===
+@Composable
+fun LoginForm(
+    mainVm: MainViewModel,
+    onConnect: () -> Unit,
+    onShowSettings: () -> Unit
+) {
+    var usernameError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .padding(top = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Button(onClick = onShowSettings, modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .height(50.dp),
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF4170A6),
+                contentColor = Color.White
+            ),) {
+            Text("Change connection settings ",fontSize = 4.em)
+            Icon(
+                painter = painterResource(id = R.drawable.settings),
+                contentDescription = "settings",
+                modifier = Modifier
+                    .size(24.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = mainVm.username,
+            onValueChange = {
+                mainVm.updateUsername(it)
+                usernameError = validateUsername(it)
+            },
+            label = { Text("Username") },
+            isError = usernameError != null,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (usernameError != null) {
+            Text(usernameError!!, color = Color.Red)
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = mainVm.password,
+            onValueChange = {
+                mainVm.updatePassword(it)
+                passwordError = validatePassword(it)
+            },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            isError = passwordError != null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (passwordError != null) {
+            Text(passwordError!!, color = Color.Red)
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = mainVm.isRemembered,
+                onCheckedChange = { mainVm.updateIsRemembered(it) },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Color(0xFF4170A6),
+                    checkmarkColor = Color.White,
+                    uncheckedColor = Color.Gray
+                )
+            )
+            Text("Remember login data")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        ShipSelect(mainVm)
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                if (usernameError == null && passwordError == null && mainVm.selectedShip.name != "") {
+                    isLoading = true
+                    Log.d("Connection", "Start")
+                    mainVm.connect()
+                    isLoading = false
+                    if (mainVm.isLoggedIn && !mainVm.error) {
+                        onConnect()
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(60.dp),
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF4170A6),
+                contentColor = Color.White
+            ),
+            enabled = !isLoading && mainVm.password!="" && mainVm.username!="" && mainVm.selectedShip.name!=""
+        ) {
+            Text(if (isLoading) "Connecting... " else "Connect ",fontSize = 8.em)
+            Icon(
+                painter = painterResource(id = R.drawable.connect),
+                contentDescription = "Connect",
+                modifier = Modifier.size(36.dp))
+        }
+    }
+    ErrorBubble(visible = mainVm.error, onClose = { mainVm.updateError(false) })
+}
+
+@Composable
+fun ErrorBubble(
+    modifier: Modifier = Modifier,
+    message: String = "An error occurred during connection. Check the connection parameters and login credentials.",
+    visible: Boolean = false,
+    onClose: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .wrapContentWidth()
+                .wrapContentHeight()
+                .background(Color(0xFF301D1E))
+                .semantics { contentDescription = "Error bubble" }
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(Color(0xFF301D1E))
+                    .padding(12.dp)
+                    .widthIn(min = 220.dp, max = 420.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Error",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.alignByBaseline()
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    IconButton(
+                        onClick = {
+                            onClose()
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .semantics { contentDescription = "Close error" }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = message,
+                    color = Color(0xFFEEEEEE),
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInHorizontally { it },
+        exit = slideOutHorizontally { it },
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
+        val darkTheme = isSystemInDarkTheme()
+        Column(
+            modifier = Modifier.background(if (darkTheme) Color.Black else Color.LightGray, RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = "Connection settings", fontSize = 6.em, modifier = Modifier.padding(top = 25.dp, bottom = 25.dp))
+            OutlinedTextField(
+                value = mainVm.serverIp,
+                onValueChange = { mainVm.updateServerIP(it) },
+                label = { Text("Server IP") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = mainVm.serverPort,
+                onValueChange = { mainVm.updateServerPort(it) },
+                label = { Text("Server Port") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(50.dp))
+
+            Button(
+                onClick = {
+                    onClose()
+                    mainVm.changeServerData()
+                },
+                modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(60.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4170A6),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(10.dp)) {
+                Text("Save",fontSize = 8.em)
+                Icon(
+                    painter = painterResource(id = R.drawable.save),
+                    contentDescription = "Save ",
+                    modifier = Modifier.size(36.dp))
+            }
+            Spacer(modifier = Modifier.height(25.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDisconnect: () -> Unit) {
+    var filter by remember { mutableStateOf("") }
+    var selectedMissionLocal by remember { mutableStateOf<MissionListItemDto>(MissionListItemDto(-1,"")) }
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Top
+    ) {
+        Button(
+            onClick = {
+                mainVm.disconnect()
+                onDisconnect()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(60.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF4170A6),
+                contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Text("Disconnect ",fontSize = 8.em)
+            Icon(
+                painter = painterResource(id = R.drawable.disconnect),
+                contentDescription = "Disconnect",
+                modifier = Modifier.size(34.dp))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+        ) {
+            Text("Welcome ${mainVm.username}", style = MaterialTheme.typography.headlineMedium)
+            Text("Ship: ${mainVm.selectedShip.name}", style = MaterialTheme.typography.headlineSmall)
+            Text("Role: ${if(mainVm.isCaptain) "Captain" else "Observer"}", style = MaterialTheme.typography.headlineSmall)
+            Text("Mission: ${if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-"}", style = MaterialTheme.typography.headlineSmall)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        HorizontalDivider(thickness = 1.dp, color = Color.White)
+        Spacer(modifier = Modifier.height(8.dp))
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
+        ) {
+            OutlinedTextField(
+                value = filter,
+                onValueChange = {
+                    filter = it
+                    expanded = true
+                },
+                label = { Text("Select mission") },
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryEditable)
+                    .fillMaxWidth(),
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                }
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                if (filter.isNotBlank() && mainVm.missions.none { it.name.equals(filter, ignoreCase = true) }) {
+                    DropdownMenuItem(
+                        text = { Text("+ Add \"$filter\"") },
+                        onClick = {
+                            mainVm.createMission(filter)
+                        }
+                    )
+                }
+
+                mainVm.missions
+                    .filter { it.name.contains(filter, ignoreCase = true) }
+                    .forEach { mission ->
+                        DropdownMenuItem(
+                            text = { Text(mission.name) },
+                            onClick = {
+                                selectedMissionLocal = mission
+                                filter = mission.name
+                                expanded = false
+                            }
+                        )
+                    }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text("Selected: ${ if(!selectedMissionLocal.name.isEmpty()) selectedMissionLocal.name else '-'}", style = MaterialTheme.typography.bodyMedium, modifier=Modifier.fillMaxWidth())
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Button(
+            onClick = {
+                mainVm.updateSelectedMission(selectedMissionLocal)
+                if (mainVm.selectedMission.id != -1) {
+                    onChangeSelectedMission()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(60.dp),
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF4170A6),
+                contentColor = Color.White
+            ),
+            enabled = selectedMissionLocal.id != -1
+        ) {
+            Text("Set mission ",fontSize = 8.em)
+            Icon(
+                painter = painterResource(id = R.drawable.save),
+                contentDescription = "Save",
+                modifier = Modifier.size(34.dp))
+        }
+    }
+}
+
+// === Validators ===
 
 fun validateUsername(username: String): String? {
     val regex = Regex("^[a-z0-9]{4,20}$")
     return if (!regex.matches(username)) {
-        "Username może zawierać tylko małe litery i cyfry (4-20 znaków)"
+        "Username can only contain lowercase letters and numbers (4-20 characters)"
     } else null
 }
 
 fun validatePassword(password: String): String? {
-    val regex = Regex("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,40}$")
+    val regex = Regex("^(?=.*[a-z])(?=.*[A-Z])(?=.*[@!#$%^&*?])(?=.*\\d).{8,40}$")
     return if (!regex.matches(password)) {
-        "Hasło musi mieć min. 8 znaków, w tym małą, wielką literę i cyfrę (max. 40 znaków)"
+        "Password must be at least 8 characters long, including lowercase, uppercase, and digits (max. 40 characters)"
     } else null
-}
-
-fun loginToServer(
-    mainVm: MainViewModel,
-    ip: String,
-    port: String,
-    username: String,
-    password: String
-): Boolean {
-    return try {
-        val socket = Socket(ip, port.toInt())
-        val output = PrintWriter(socket.getOutputStream(), true)
-        val input = BufferedReader(InputStreamReader(socket.getInputStream()))
-
-        val message = "Login;$username;$password"
-        output.println(message)
-
-        val response = input.readLine()
-
-        if (response.split(";")[0].trim() == "Permission granted") {
-            mainVm.updateSocket(socket, response.split(";")[1])
-        }
-
-        response.split(";")[0].trim() == "Permission granted"
-      
-    } catch (e: Exception) {
-        e.printStackTrace()
-        false
-    }
 }
 
 @Preview(showBackground = true)
