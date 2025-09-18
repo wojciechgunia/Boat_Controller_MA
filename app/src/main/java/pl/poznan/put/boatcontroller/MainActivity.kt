@@ -275,7 +275,9 @@ fun MenuButton(
                 navController.navigate(navDest)
             } else if (navDest != null && navDest == "waypoint") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                    val intent = Intent(context, WaypointActivity::class.java)
+                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
+                    context.startActivity(intent, null)
                 }
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {

@@ -39,7 +39,7 @@ import pl.poznan.put.boatcontroller.mappers.toDomain
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
-    var missionId by mutableIntStateOf(1)
+    var missionId by mutableIntStateOf(-1)
         private set
 
     var isToolbarOpened by mutableStateOf(false)
@@ -96,7 +96,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 loginAndInitApi()
                 loadMission()
                 backendApi?.let { api ->
-                    val list = api.getWaypointsList(1).map { it.toDomain() }
+                    val list = api.getWaypointsList(missionId).map { it.toDomain() }
 
                     if (list.isNotEmpty()) {
                         _waypointPositions.clear()
@@ -390,6 +390,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendMessage(message: String) {
         SocketClientManager.sendMessage(message)
+    }
+
+    fun updateMissionId(missionId: Int) {
+        this.missionId = missionId
     }
 }
 
