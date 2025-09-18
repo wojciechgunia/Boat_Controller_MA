@@ -21,10 +21,10 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
-import pl.poznan.put.boatcontroller.auth.ApiClient
-import pl.poznan.put.boatcontroller.auth.ApiService
-import pl.poznan.put.boatcontroller.auth.AuthClient
-import pl.poznan.put.boatcontroller.auth.TokenManager
+import pl.poznan.put.boatcontroller.api.ApiClient
+import pl.poznan.put.boatcontroller.api.ApiService
+import pl.poznan.put.boatcontroller.api.AuthClient
+import pl.poznan.put.boatcontroller.api.TokenManager
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
 import pl.poznan.put.boatcontroller.dataclass.LoginRequest
 import pl.poznan.put.boatcontroller.dataclass.POIObject

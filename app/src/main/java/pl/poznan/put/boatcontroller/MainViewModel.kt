@@ -15,7 +15,7 @@ import pl.poznan.put.boatcontroller.api.AuthClient
 import pl.poznan.put.boatcontroller.api.TokenManager
 import pl.poznan.put.boatcontroller.data.UserData
 import pl.poznan.put.boatcontroller.dataclass.LoginRequest
-import pl.poznan.put.boatcontroller.dataclass.MissionAddDto
+import pl.poznan.put.boatcontroller.dataclass.MissionCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
 import pl.poznan.put.boatcontroller.dataclass.ShipListItemDto
 
@@ -183,7 +183,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 ApiClient.setBaseUrl("http://${serverIp}:${serverPort}/")
                 val api = ApiClient.create(getApplication())
-                var mission = api.createMission(MissionAddDto(name))
+                var mission = api.createMission(MissionCreateRequest(name))
                 missions = (missions + mission) as ArrayList<MissionListItemDto>
             } catch (e: Exception) {
                 Log.e("API", "Missions create error", e)
