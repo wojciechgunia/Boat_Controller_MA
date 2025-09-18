@@ -25,10 +25,12 @@ class Repository(context: Context): UserDataDao {
     override suspend fun edit(
         login: String,
         password: String,
-        ipAddress: String,
-        port: String
     ) = withContext(Dispatchers.IO) {
-        dao.edit(login, password, ipAddress, port)
+        dao.edit(login, password)
+    }
+
+    override suspend fun editServer(ipAddress: String, port: String) = withContext(Dispatchers.IO) {
+        dao.editServer(ipAddress, port)
     }
 
     override suspend fun editRemember(isRemembered: Boolean) = withContext(Dispatchers.IO) {
