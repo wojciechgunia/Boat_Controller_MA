@@ -7,6 +7,7 @@ import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 
 fun PointOfInterestDto.toDomain(): POIObject {
     return POIObject(
+        id = id,
         missionId = missionId,
         lon = lon.toDoubleOrNull() ?: 0.0,
         lat = lat.toDoubleOrNull() ?: 0.0,

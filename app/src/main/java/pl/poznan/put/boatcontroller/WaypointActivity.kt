@@ -567,6 +567,25 @@ class WaypointActivity : ComponentActivity() {
 
                                 else -> false
                             }
+
+                            val poiObject =
+                                mapboxMap.projection.toScreenLocation(latLng)
+                            val features = mapboxMap.queryRenderedFeatures(
+                                poiObject,
+                                "poi-layer"
+                            )
+
+                            if (features.isNotEmpty()) {
+                                val clickedFeature = features.first()
+                                val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
+                                if (id != null) {
+                                    Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
+                                    //TODO: Zrób po kliknięciu jakiś big skip
+                                }
+                                true
+                            } else {
+                                false
+                            }
                         }
                         updateWaypointBitmaps(style)
                     }

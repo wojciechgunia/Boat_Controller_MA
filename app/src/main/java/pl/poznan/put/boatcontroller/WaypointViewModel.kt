@@ -349,6 +349,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun getPoiFeature(): List<Feature> {
         return _poiPositions.map {
             Feature.fromGeometry(Point.fromLngLat(it.lat, it.lon)).apply {
+                addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "poi-icon")
             }
         }
