@@ -23,11 +23,9 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.ApiService
-import pl.poznan.put.boatcontroller.api.AuthClient
-import pl.poznan.put.boatcontroller.api.TokenManager
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
-import pl.poznan.put.boatcontroller.dataclass.LoginRequest
 import pl.poznan.put.boatcontroller.dataclass.POIObject
+import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.RunningCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointCreateRequest
@@ -43,6 +41,10 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     var isToolbarOpened by mutableStateOf(false)
+
+    var openPOIDialog by mutableStateOf(false)
+
+    var poiId by mutableIntStateOf(-1)
 
     private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
     val shipPosition: MutableState<ShipPosition> = _shipPosition
@@ -90,18 +92,20 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 _shouldFinish.postValue(true)
             }
         }
-
+    }
+    fun initModel() {
         viewModelScope.launch {
             try {
-                loginAndInitApi()
+                Log.d("Get Mission Id", missionId.toString())
+                backendApi = ApiClient.create(getApplication())
                 loadMission()
                 backendApi?.let { api ->
                     val list = api.getWaypointsList(missionId).map { it.toDomain() }
-
                     if (list.isNotEmpty()) {
                         _waypointPositions.clear()
                         _waypointPositions.addAll(list)
                     }
+                    Log.d("Way", _waypointPositions.toString())
                 }
             } catch (e: Exception) {
                 Log.e("API", "Błąd logowania", e)
@@ -109,19 +113,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun loginAndInitApi() {
-        val loginResponse = AuthClient.authApi.login(LoginRequest("admin", "admin123"))
-        TokenManager.saveToken(getApplication(), loginResponse.access_token)
-        backendApi = ApiClient.create(getApplication())
-    }
-
     fun loadMission() {
         viewModelScope.launch {
             backendApi?.let { api ->
                 val poiList = api.getPoiList(missionId).map { it.toDomain() }
-
                 _poiPositions.clear()
                 _poiPositions.addAll(poiList)
+                Log.d("POI", _poiPositions.toString())
             }
         }
     }
@@ -242,7 +240,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     lon = lon.toString(),
                     lat = lat.toString()
                 )
-
+                Log.d("WAYPOINTS", req.toString())
                 backendApi?.createWaypoint(req)
 
                 val waypoint = WaypointObject(no, lon, lat)
@@ -347,8 +345,9 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getPoiFeature(): List<Feature> {
+        Log.d("POI", _poiPositions.toString())
         return _poiPositions.map {
-            Feature.fromGeometry(Point.fromLngLat(it.lat, it.lon)).apply {
+            Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "poi-icon")
             }
@@ -395,6 +394,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateMissionId(missionId: Int) {
         this.missionId = missionId
+        initModel()
+    }
+
+    fun updatePoiData(id: Int, name: String, description: String) {
+        viewModelScope.launch {
+            backendApi?.updatePoi(id, POIUpdateRequest(name = name, description = description))
+        }
     }
 }
 

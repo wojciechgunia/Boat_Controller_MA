@@ -14,7 +14,7 @@ data class POIObject(
     val lat: Double,
     val name: String? = null,
     val description: String? = null,
-    val pictures: List<String>? = null
+    val pictures: String? = null
 )
 
 data class CameraPositionState(

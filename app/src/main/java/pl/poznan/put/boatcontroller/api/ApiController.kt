@@ -139,13 +139,13 @@ interface ApiService {
         @Path("mission_id") missionId: Int
     ): List<PointOfInterestDto>
 
-    @PUT("pois")
+    @PUT("pois/{poi_id}")
     suspend fun updatePoi(
         @Path("poi_id") poiId: Int,
         @Body request: POIUpdateRequest
     ): PointOfInterestDto
 
-    @DELETE("pois")
+    @DELETE("pois/{poi_id}")
     suspend fun deletePoi(
         @Path("poi_id") poiId: Int
     ): Response<Unit>

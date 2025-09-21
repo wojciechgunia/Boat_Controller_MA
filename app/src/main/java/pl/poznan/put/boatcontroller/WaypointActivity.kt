@@ -112,6 +112,7 @@ import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointIndication
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.enums.WaypointMode
+import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
 class WaypointActivity : ComponentActivity() {
@@ -119,7 +120,7 @@ class WaypointActivity : ComponentActivity() {
     val cameraZoomAnimationTime = 2
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val intent = getIntent();
+        val intent = getIntent()
         val selectedMission = intent.getIntExtra("selectedMission", -1)
         waypointVm.updateMissionId(selectedMission)
         setTheme(R.style.Theme_BoatController)
@@ -278,6 +279,7 @@ class WaypointActivity : ComponentActivity() {
                 }
             }
         }
+        FullScreenPopup(waypointVm.openPOIDialog, { waypointVm.openPOIDialog = false }, waypointVm.poiId, waypointVm.poiPositions, { name -> waypointVm.updatePoiData(waypointVm.poiId, name, waypointVm.poiPositions[waypointVm.poiId].description.toString()) }, { description -> waypointVm.updatePoiData(waypointVm.poiId, waypointVm.poiPositions[waypointVm.poiId].name.toString(), description)})
     }
 
     @SuppressLint("InflateParams")
@@ -580,7 +582,8 @@ class WaypointActivity : ComponentActivity() {
                                 val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
                                 if (id != null) {
                                     Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
-                                    //TODO: Zrób po kliknięciu jakiś big skip
+                                    waypointVm.poiId = waypointVm.poiPositions.indexOfFirst { it.id == id }
+                                    waypointVm.openPOIDialog = true
                                 }
                                 true
                             } else {

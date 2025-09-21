@@ -7,7 +7,7 @@ data class PointOfInterestDto(
     val lon: String,
     val name: String?,
     val description: String?,
-    val pictures: List<String>?
+    val pictures: String?
 )
 
 data class POICreateRequest(
@@ -16,11 +16,10 @@ data class POICreateRequest(
     val lon: String,
     val name: String?,
     val description: String?,
-    val pictures: List<String>?
+    val pictures: String?
 )
 
 data class POIUpdateRequest(
     val name: String?,
     val description: String?,
-    val pictures: List<String>?
 )
