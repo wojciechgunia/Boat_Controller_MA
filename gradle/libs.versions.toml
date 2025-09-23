@@ -8,6 +8,7 @@ androidxGraphicsShapes = "1.0.1"
 androidxNavigationCompose = "2.6.0"
 coilCompose = "2.2.2"
 coilComposeVersion = "3.2.0"
+coilNetworkKtor = "3.0.0"
 converterGson = "2.9.0"
 
 kotlin = "2.0.21"
@@ -46,6 +47,8 @@ androidx-navigation-compose-v277 = { module = "androidx.navigation:navigation-co
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomRuntime" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomRuntime" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
+coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor", version.ref = "coilNetworkKtor" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coilNetworkKtor" }
 coil3-coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coilComposeVersion" }
 converter-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "converterGson" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "activityComposeVersion" }

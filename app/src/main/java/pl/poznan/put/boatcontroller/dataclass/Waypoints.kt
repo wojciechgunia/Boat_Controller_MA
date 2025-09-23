@@ -12,8 +12,8 @@ data class POIObject(
     var missionId: Int,
     val lon: Double,
     val lat: Double,
-    val name: String? = null,
-    val description: String? = null,
+    var name: String? = null,
+    var description: String? = null,
     val pictures: String? = null
 )
 

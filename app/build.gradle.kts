@@ -69,6 +69,7 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     testImplementation(libs.junit)
     implementation(libs.coil3.coil.compose)
+    implementation(libs.coil.network.okhttp)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

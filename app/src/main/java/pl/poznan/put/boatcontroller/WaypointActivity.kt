@@ -279,7 +279,10 @@ class WaypointActivity : ComponentActivity() {
                 }
             }
         }
-        FullScreenPopup(waypointVm.openPOIDialog, { waypointVm.openPOIDialog = false }, waypointVm.poiId, waypointVm.poiPositions, { name -> waypointVm.updatePoiData(waypointVm.poiId, name, waypointVm.poiPositions[waypointVm.poiId].description.toString()) }, { description -> waypointVm.updatePoiData(waypointVm.poiId, waypointVm.poiPositions[waypointVm.poiId].name.toString(), description)})
+        FullScreenPopup(waypointVm.openPOIDialog, { waypointVm.openPOIDialog = false }, waypointVm.poiId, waypointVm.poiPositions, { id: Int, name: String -> waypointVm.updatePoiData(id, name, waypointVm.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> waypointVm.updatePoiData(id, waypointVm.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> waypointVm.deletePoi(id)
+            waypointVm.openPOIDialog = false
+            //TODO: refresh POI on map
+            })
     }
 
     @SuppressLint("InflateParams")

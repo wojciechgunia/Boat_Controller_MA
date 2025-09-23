@@ -77,10 +77,10 @@ interface ApiService {
     @GET("missions/{mission_id}")
     suspend fun getMissionData(
         @Path("mission_id") missionId: Int
-    ): MissionDto
+    ): Response<MissionDto>
 
     @GET("missions")
-    suspend fun getMissions(): List<MissionListItemDto>
+    suspend fun getMissions(): Response<List<MissionListItemDto>>
 
     @DELETE("missions/{mission_id}")
     suspend fun deleteMission(
@@ -97,13 +97,13 @@ interface ApiService {
     @GET("waypoints/{mission_id}")
     suspend fun getWaypointsList(
         @Path("mission_id") missionId: Int
-    ): List<WaypointDto>
+    ): Response<List<WaypointDto>>
 
     @PUT("waypoints/{waypoint_id}")
     suspend fun updateWaypoint(
         @Path("waypoint_id") waypointId: Int,
         @Body request: WaypointUpdateRequest
-    ): WaypointDto
+    ): Response<WaypointDto>
 
     @DELETE("waypoints/{waypoint_id}")
     suspend fun deleteWaypoint(
@@ -120,12 +120,12 @@ interface ApiService {
     @GET("runnings/{mission_id}/last")
     suspend fun getLastRunning(
         @Path("mission_id") missionId: Int
-    ): RunningDto
+    ): Response<RunningDto>
 
     @GET("runnings/{mission_id}")
     suspend fun getRunningsList(
         @Path("mission_id") missionId: Int
-    ): List<RunningDto>
+    ): Response<List<RunningDto>>
 
 
     // POI endpoints
@@ -137,13 +137,13 @@ interface ApiService {
     @GET("pois/{mission_id}")
     suspend fun getPoiList(
         @Path("mission_id") missionId: Int
-    ): List<PointOfInterestDto>
+    ): Response<List<PointOfInterestDto>>
 
     @PUT("pois/{poi_id}")
     suspend fun updatePoi(
         @Path("poi_id") poiId: Int,
         @Body request: POIUpdateRequest
-    ): PointOfInterestDto
+    ): Response<PointOfInterestDto>
 
     @DELETE("pois/{poi_id}")
     suspend fun deletePoi(

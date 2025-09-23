@@ -166,7 +166,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         try {
             ApiClient.setBaseUrl("http://${serverIp}:${serverPort}/")
             val api = ApiClient.create(getApplication())
-            missions = api.getMissions()
+            val response = api.getMissions()
+            if(response.isSuccessful) {
+                missions = response.body()!!
+            } else {
+                error = true
+            }
             if(!error) {
                 isLoggedIn = true
             }
@@ -184,7 +189,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ApiClient.setBaseUrl("http://${serverIp}:${serverPort}/")
                 val api = ApiClient.create(getApplication())
                 var mission = api.createMission(MissionCreateRequest(name))
-                missions = (missions + mission) as ArrayList<MissionListItemDto>
+                missions = (missions + mission) as List<MissionListItemDto>
             } catch (e: Exception) {
                 Log.e("API", "Missions create error", e)
             }

@@ -100,12 +100,18 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 backendApi = ApiClient.create(getApplication())
                 loadMission()
                 backendApi?.let { api ->
-                    val list = api.getWaypointsList(missionId).map { it.toDomain() }
-                    if (list.isNotEmpty()) {
-                        _waypointPositions.clear()
-                        _waypointPositions.addAll(list)
+                    val response = api.getWaypointsList(missionId)
+                    if (response.isSuccessful) {
+                        val list = response.body()!!.map { it.toDomain() }
+                        if (list.isNotEmpty()) {
+                            _waypointPositions.clear()
+                            _waypointPositions.addAll(list)
+                        }
+                        Log.d("Way", _waypointPositions.toString())
+                    } else {
+                        Log.e("API", "Błąd pobierania waypoints")
                     }
-                    Log.d("Way", _waypointPositions.toString())
+
                 }
             } catch (e: Exception) {
                 Log.e("API", "Błąd logowania", e)
@@ -116,10 +122,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMission() {
         viewModelScope.launch {
             backendApi?.let { api ->
-                val poiList = api.getPoiList(missionId).map { it.toDomain() }
-                _poiPositions.clear()
-                _poiPositions.addAll(poiList)
-                Log.d("POI", _poiPositions.toString())
+                val response = api.getPoiList(missionId)
+                if (response.isSuccessful) {
+                    val poiList = response.body()!!.map { it.toDomain() }
+                    _poiPositions.clear()
+                    _poiPositions.addAll(poiList)
+                    Log.d("POI", _poiPositions.toString())
+                }
             }
         }
     }
@@ -257,7 +266,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun removeWaypoint(no: Int) {
         viewModelScope.launch {
             try {
-                val waypoints = backendApi?.getWaypointsList(missionId)?.toMutableList() ?: mutableListOf()
+                val response = backendApi?.getWaypointsList(missionId)
+                if (response == null || !response.isSuccessful) {
+                    Log.e("API", "Nie udało się pobrać waypointów")
+                    return@launch
+                }
+
+                val waypoints = response.body()?.toMutableList() ?: mutableListOf()
                 val targetWp = waypoints.firstOrNull { it.no == no }
 
                 if (targetWp != null) {
@@ -290,7 +305,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun moveWaypoint(no: Int, newLon: Double, newLat: Double) {
         viewModelScope.launch {
             try {
-                val waypoints = backendApi?.getWaypointsList(missionId)?.toMutableList() ?: mutableListOf()
+                val response = backendApi?.getWaypointsList(missionId)
+                if (response == null || !response.isSuccessful) {
+                    Log.e("API", "Nie udało się pobrać waypointów")
+                    return@launch
+                }
+                val waypoints = response.body()?.toMutableList() ?: mutableListOf()
                 val targetWp = waypoints.firstOrNull { it.no == no }
 
                 if (targetWp != null) {
@@ -399,7 +419,21 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updatePoiData(id: Int, name: String, description: String) {
         viewModelScope.launch {
-            backendApi?.updatePoi(id, POIUpdateRequest(name = name, description = description))
+            Log.d("POI", "updatePoiData: $id, $name, $description")
+            val response = backendApi?.updatePoi(id, POIUpdateRequest(name = name, description = description))
+            if(response == null || !response.isSuccessful) {
+                Log.e("API", "Błąd aktualizacji POI", Exception("Response is null or not successful"))
+                Log.d("API", "Response: $response")
+                return@launch
+            }
+            loadMission()
+        }
+    }
+
+    fun deletePoi(id: Int) {
+        viewModelScope.launch {
+            backendApi?.deletePoi(id)
+            loadMission()
         }
     }
 }
