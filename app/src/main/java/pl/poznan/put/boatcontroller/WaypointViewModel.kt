@@ -17,6 +17,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
@@ -45,6 +46,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     var openPOIDialog by mutableStateOf(false)
 
     var poiId by mutableIntStateOf(-1)
+
+    private val _mapLibreMapState = mutableStateOf<MapLibreMap?>(null)
+    val mapLibreMapState: MutableState<MapLibreMap?> = _mapLibreMapState
+
+    private val _phonePosition = mutableStateOf<DoubleArray?>(null)
+    val phonePosition: MutableState<DoubleArray?> = _phonePosition
 
     private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
     val shipPosition: MutableState<ShipPosition> = _shipPosition
@@ -340,6 +347,19 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         _waypointBitmaps[id] = bitmap
     }
 
+    fun setMapReady(map: MapLibreMap) {
+        _mapLibreMapState.value = map
+    }
+
+    fun setPhonePosition(lat: Double, lon: Double) {
+        _phonePosition.value = doubleArrayOf(lat, lon)
+    }
+
+    fun setPhonePositionFallback() {
+        val shipPos = _shipPosition.value
+        setPhonePosition(shipPos.lat, shipPos.lon)
+    }
+
     fun toggleWaypointEditMode(mode: WaypointMode?) {
         waypointMode = if(waypointMode != mode && mode != null) {
             mode
@@ -348,11 +368,17 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun getShipFeature(): FeatureCollection? {
-        val point = Point.fromLngLat(shipPosition.value.lon, shipPosition.value.lat)
-        val feature = Feature.fromGeometry(point)
-        val featureCollection = FeatureCollection.fromFeature(feature)
-        return featureCollection
+    fun getShipFeature(): FeatureCollection {
+        val shipCoordinates = Point.fromLngLat(
+            shipPosition.value.lon,
+            shipPosition.value.lat
+        )
+
+        val shipFeature = Feature.fromGeometry(shipCoordinates).apply {
+            addStringProperty("title", "Ship")
+        }
+
+        return FeatureCollection.fromFeature(shipFeature)
     }
 
     fun getWaypointsFeature(): List<Feature> {
@@ -372,6 +398,19 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 addStringProperty("icon", "poi-icon")
             }
         }
+    }
+
+    fun getPhoneLocationFeature(): FeatureCollection {
+        val phoneCoordinates = Point.fromLngLat(
+            phonePosition.value?.get(0) ?: shipPosition.value.lon,
+            phonePosition.value?.get(1) ?: shipPosition.value.lat,
+        )
+
+        val phoneFeature = Feature.fromGeometry(phoneCoordinates).apply {
+            addStringProperty("title", "Phone")
+        }
+
+        return FeatureCollection.fromFeature(phoneFeature)
     }
 
     fun getConnectionLinesFeature(): List<Feature> {

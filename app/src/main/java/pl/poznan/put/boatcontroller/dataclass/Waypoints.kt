@@ -18,7 +18,7 @@ data class POIObject(
 )
 
 data class CameraPositionState(
-    val lon: Double,
     val lat: Double,
+    val lon: Double,
     val zoom: Double
 )
