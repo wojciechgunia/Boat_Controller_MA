@@ -5,9 +5,6 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -105,10 +102,10 @@ import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.enums.ShipDirection
-import pl.poznan.put.boatcontroller.enums.WaypointIndication
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
+import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
 class WaypointActivity : ComponentActivity() {
@@ -207,13 +204,14 @@ class WaypointActivity : ComponentActivity() {
         }
 
         LaunchedEffect(phonePosition, map?.style) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
             val pos = phonePosition ?: return@LaunchedEffect
-            map?.style?.let { style ->
-                val phoneFeature = Feature.fromGeometry(Point.fromLngLat(pos[1], pos[0]))
-                phoneFeature.addStringProperty("title", "Phone")
-                style.getSourceAs<GeoJsonSource>("phone-source")
-                    ?.setGeoJson(FeatureCollection.fromFeatures(listOf(phoneFeature)))
-            }
+
+            val phoneFeature = Feature.fromGeometry(Point.fromLngLat(pos[1], pos[0]))
+            phoneFeature.addStringProperty("title", "Phone")
+            style.getSourceAs<GeoJsonSource>("phone-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(listOf(phoneFeature)))
 
             val saved = waypointVm.cameraPosition.value
 
@@ -221,7 +219,7 @@ class WaypointActivity : ComponentActivity() {
             val targetLng = saved?.lon ?: pos[1]
             val zoom = saved?.zoom ?: 13.0
 
-            map?.animateCamera(
+            mapboxMap.animateCamera(
                 CameraUpdateFactory.newLatLngZoom(
                     LatLng(targetLat, targetLng),
                     zoom
@@ -230,27 +228,30 @@ class WaypointActivity : ComponentActivity() {
         }
 
         LaunchedEffect(waypoints.toList()) {
-            map?.style?.let { style ->
-                waypoints.forEach { wp ->
-                    val bitmap = getOrCreateWaypointBitmap(wp.no, context)
-                    addWaypointBitmapToStyleIfNeeded(wp.no, bitmap, style)
-                }
-                refreshMapFeatures(style)
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            waypoints.forEach { wp ->
+                val bitmap = getOrCreateWaypointBitmap(wp.no, context)
+                addWaypointBitmapToStyleIfNeeded(wp.no, bitmap, style)
             }
+            refreshMapFeatures(style)
         }
 
         LaunchedEffect(poi) {
-            map?.style?.let { style ->
-                refreshMapFeatures(style)
-            }
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            refreshMapFeatures(style)
         }
 
         LaunchedEffect(poiToggle) {
-            map?.style?.let { style ->
-                style.getLayer("poi-layer")?.setProperties(
-                    visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
-                )
-            }
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            style.getLayer("poi-layer")?.setProperties(
+                visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
+            )
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -752,63 +753,6 @@ class WaypointActivity : ComponentActivity() {
                 contentDescription = null,
                 tint = Color.White
             )
-        }
-    }
-
-    fun createWaypointBitmap(
-        waypointDrawable: Drawable,
-        indicationDrawable: WaypointIndication?,
-        waypointNumber: String = ""
-    ): Bitmap {
-        // Canvas is creating image on (0,0) left/top so additional
-        // pixels are going on bottom/right
-        val extraTop = 30
-        val extraRight = 30
-
-        val waypointScale = 0.20f
-        val waypointWidth = (waypointDrawable.intrinsicWidth * waypointScale).toInt()
-        val waypointHeight = (waypointDrawable.intrinsicHeight * waypointScale).toInt()
-
-        val width = waypointWidth + extraRight
-        val height = waypointHeight + extraTop
-
-        return createBitmap(
-            width,
-            height
-        ).apply {
-            val canvas = Canvas(this)
-
-            waypointDrawable.setBounds(0, extraTop, waypointWidth, extraTop + waypointHeight)
-            waypointDrawable.draw(canvas)
-
-            indicationDrawable?.let { ind ->
-                val indicationScale = 0.08f
-                val dw = (ind.drawable.intrinsicWidth * indicationScale).toInt()
-                val dh = (ind.drawable.intrinsicHeight * indicationScale).toInt()
-
-                val indLeft = width - dw
-                val indTop = 0
-                val indRight = indLeft + dw
-                val indBottom = indTop + dh
-
-                ind.drawable.setBounds(indLeft, indTop, indRight, indBottom)
-                ind.drawable.draw(canvas)
-            }
-
-            if(waypointNumber != "") {
-                val paintText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.White.toArgb()
-                    textSize = 76f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    textAlign = Paint.Align.CENTER
-                    isFakeBoldText = true
-                }
-
-                val textX = waypointWidth / 2f
-                val textY = waypointHeight * 0.5f - (paintText.descent() + paintText.ascent()) / 2f
-
-                canvas.drawText(waypointNumber, textX, textY, paintText)
-            }
         }
     }
 

@@ -100,6 +100,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
     fun initModel() {
         viewModelScope.launch {
             try {
