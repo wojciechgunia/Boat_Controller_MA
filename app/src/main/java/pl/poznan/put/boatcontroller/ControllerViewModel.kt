@@ -18,6 +18,7 @@ import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.ApiService
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
 import pl.poznan.put.boatcontroller.dataclass.POIObject
+import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
 import pl.poznan.put.boatcontroller.mappers.toDomain
@@ -27,6 +28,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
     var missionId by mutableIntStateOf(-1)
         private set
+
+    var openPOIDialog by mutableStateOf(false)
+    var poiId by mutableIntStateOf(-1)
 
     private var _poiPositions = mutableStateListOf<POIObject>()
     var poiPositions: SnapshotStateList<POIObject> = _poiPositions
@@ -176,6 +180,26 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "poi-icon")
             }
+        }
+    }
+
+    fun updatePoiData(id: Int, name: String, description: String) {
+        viewModelScope.launch {
+            Log.d("POI", "updatePoiData: $id, $name, $description")
+            val response = backendApi?.updatePoi(id, POIUpdateRequest(name = name, description = description))
+            if(response == null || !response.isSuccessful) {
+                Log.e("API", "Błąd aktualizacji POI", Exception("Response is null or not successful"))
+                Log.d("API", "Response: $response")
+                return@launch
+            }
+            loadMission()
+        }
+    }
+
+    fun deletePoi(id: Int) {
+        viewModelScope.launch {
+            backendApi?.deletePoi(id)
+            loadMission()
         }
     }
 }

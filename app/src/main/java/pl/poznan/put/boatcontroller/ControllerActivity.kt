@@ -107,6 +107,7 @@ import org.maplibre.geojson.Point
 import org.maplibre.android.style.layers.SymbolLayer
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
+import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
@@ -780,6 +781,28 @@ class ControllerActivity: ComponentActivity() {
                                 mapboxMap.uiSettings.isRotateGesturesEnabled = false
 
                                 poiSource.setGeoJson(FeatureCollection.fromFeatures(viewModel.getPoiFeature()))
+                                mapboxMap.addOnMapClickListener { latLng ->
+                                    val poiObject =
+                                        mapboxMap.projection.toScreenLocation(latLng)
+                                    val poiFeatures = mapboxMap.queryRenderedFeatures(
+                                        poiObject,
+                                        "poi-layer"
+                                    )
+
+                                    if (poiFeatures.isNotEmpty()) {
+                                        val clickedFeature = poiFeatures.first()
+                                        val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
+                                        if (id != null) {
+                                            Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
+                                            viewModel.poiId = viewModel.poiPositions.indexOfFirst { it.id == id }
+                                            viewModel.openPOIDialog = true
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                poiSource.setGeoJson(FeatureCollection.fromFeatures(viewModel.getPoiFeature()))
                             }
                         }
                     }
@@ -842,6 +865,10 @@ class ControllerActivity: ComponentActivity() {
                     )
                 }
             }
+
+            FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
+                viewModel.openPOIDialog = false
+            })
         }
     }
 
