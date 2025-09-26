@@ -281,7 +281,9 @@ fun MenuButton(
                 }
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, ControllerActivity::class.java), null)
+                    val intent = Intent(context, ControllerActivity::class.java)
+                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
+                    context.startActivity(intent, null)
                 }
             } else if (navDest != null && navDest == "vr_mode") {
                 if (mainVm != null) {

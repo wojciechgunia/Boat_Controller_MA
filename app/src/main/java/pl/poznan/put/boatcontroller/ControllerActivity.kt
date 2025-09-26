@@ -36,8 +36,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -53,8 +58,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -71,6 +78,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -87,25 +95,31 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import org.maplibre.android.style.layers.SymbolLayer
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
+import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
+import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 import kotlin.math.min
 
 class ControllerActivity: ComponentActivity() {
-
     private val viewModel by viewModels<ControllerViewModel>()
-
+    val cameraZoomAnimationTime = 2
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val intent = getIntent()
+        val selectedMission = intent.getIntExtra("selectedMission", -1)
+        viewModel.updateMissionId(selectedMission)
         setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
 
@@ -517,15 +531,17 @@ class ControllerActivity: ComponentActivity() {
     fun MapTab(viewModel: ControllerViewModel, modifier: Modifier = Modifier) {
         val context = LocalContext.current
         var phonePosition by remember { mutableStateOf<DoubleArray?>(null) }
+        val poi = viewModel.poiPositions.toList()
         val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
 
         val locationManager = context.getSystemService(LOCATION_SERVICE) as LocationManager
 
         val isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
 
+        val poiToggle = viewModel.arePoiVisible
+
         var mapboxMapRef by remember { mutableStateOf<MapLibreMap?>(null) }
         var phoneSourceRef by remember { mutableStateOf<GeoJsonSource?>(null) }
-
         var homeSourceRef by remember { mutableStateOf<GeoJsonSource?>(null) }
 
         LaunchedEffect(Unit) {
@@ -595,15 +611,33 @@ class ControllerActivity: ComponentActivity() {
             }
         }
 
-        AndroidView(
-            factory = {
-                MapLibre.getInstance(context)
-                MapView(context).apply {
-                    getMapAsync { mapboxMap ->
+        LaunchedEffect(poi) {
+            val mapboxMap = mapboxMapRef ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
 
-                        mapboxMapRef = mapboxMap
+            style.getSourceAs<GeoJsonSource>("poi-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(viewModel.getPoiFeature()))
+        }
 
-                        val styleJson = """
+        LaunchedEffect(poiToggle) {
+            val mapboxMap = mapboxMapRef ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            style.getLayer("poi-layer")?.setProperties(
+                visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
+            )
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            AndroidView(
+                factory = {
+                    MapLibre.getInstance(context)
+                    MapView(context).apply {
+                        getMapAsync { mapboxMap ->
+
+                            mapboxMapRef = mapboxMap
+
+                            val styleJson = """
                         {
                           "version": 8,
                           "sources": {
@@ -641,93 +675,174 @@ class ControllerActivity: ComponentActivity() {
                         }
                     """.trimIndent()
 
-                        val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
-                        val shipBitmap = Bitmap.createBitmap(
-                            shipDrawable.intrinsicWidth,
-                            shipDrawable.intrinsicHeight,
-                            Bitmap.Config.ARGB_8888
-                        ).apply {
-                            val canvas = android.graphics.Canvas(this)
-                            shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
-                            shipDrawable.draw(canvas)
-                        }
-
-                        val phoneDrawable = ContextCompat.getDrawable(context, R.drawable.steering_wheel)!!
-                        val phoneBitmap = Bitmap.createBitmap(
-                            phoneDrawable.intrinsicWidth,
-                            phoneDrawable.intrinsicHeight,
-                            Bitmap.Config.ARGB_8888
-                        ).apply {
-                            val canvas = android.graphics.Canvas(this)
-                            phoneDrawable.setBounds(0, 0, canvas.width, canvas.height)
-                            phoneDrawable.draw(canvas)
-                        }
-
-                        val homeDrawable = ContextCompat.getDrawable(context, R.drawable.home)!!
-                        val homeBitmap = Bitmap.createBitmap(
-                            homeDrawable.intrinsicWidth,
-                            homeDrawable.intrinsicHeight,
-                            Bitmap.Config.ARGB_8888
-                        ).apply {
-                            val canvas = android.graphics.Canvas(this)
-                            homeDrawable.setBounds(0, 0, canvas.width, canvas.height)
-                            homeDrawable.draw(canvas)
-                        }
-
-                        mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                            style.addImage("ship-icon", shipBitmap)
-                            style.addImage("phone-icon", phoneBitmap)
-                            style.addImage("home-icon", homeBitmap)
-
-                            val homeFeature = Feature.fromGeometry(
-                                Point.fromLngLat(
-                                    viewModel.homePosition.lon,
-                                    viewModel.homePosition.lat
-                                )
+                            val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
+                            val shipBitmap = Bitmap.createBitmap(
+                                shipDrawable.intrinsicWidth,
+                                shipDrawable.intrinsicHeight,
+                                Bitmap.Config.ARGB_8888
                             ).apply {
-                                addStringProperty("title", "Home")
+                                val canvas = android.graphics.Canvas(this)
+                                shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                                shipDrawable.draw(canvas)
                             }
-                            val homeSource = GeoJsonSource("home-source", FeatureCollection.fromFeatures(listOf(homeFeature)))
-                            homeSourceRef = homeSource
-                            style.addSource(homeSource)
 
-                            val homeLayer = SymbolLayer("home-layer", "home-source").withProperties(
-                                iconImage("home-icon"),
-                                iconSize(0.045f),
-                                iconAllowOverlap(true)
+                            val phoneDrawable = ContextCompat.getDrawable(context, R.drawable.steering_wheel)!!
+                            val phoneBitmap = Bitmap.createBitmap(
+                                phoneDrawable.intrinsicWidth,
+                                phoneDrawable.intrinsicHeight,
+                                Bitmap.Config.ARGB_8888
+                            ).apply {
+                                val canvas = android.graphics.Canvas(this)
+                                phoneDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                                phoneDrawable.draw(canvas)
+                            }
+
+                            val homeDrawable = ContextCompat.getDrawable(context, R.drawable.home)!!
+                            val homeBitmap = Bitmap.createBitmap(
+                                homeDrawable.intrinsicWidth,
+                                homeDrawable.intrinsicHeight,
+                                Bitmap.Config.ARGB_8888
+                            ).apply {
+                                val canvas = android.graphics.Canvas(this)
+                                homeDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                                homeDrawable.draw(canvas)
+                            }
+
+                            val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+                            val indicationDrawable = WaypointIndicationType.STAR.toWaypointIndication(context)
+
+                            val poiBitmap = createWaypointBitmap(
+                                waypointDrawable,
+                                indicationDrawable,
                             )
-                            style.addLayer(homeLayer)
 
-                            val phoneSource = GeoJsonSource("phone-source", FeatureCollection.fromFeatures(emptyArray()))
-                            phoneSourceRef = phoneSource
-                            style.addSource(phoneSource)
+                            mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                                style.addImage("ship-icon", shipBitmap)
+                                style.addImage("phone-icon", phoneBitmap)
+                                style.addImage("home-icon", homeBitmap)
+                                style.addImage("poi-icon", poiBitmap)
 
-                            val phoneLayer = SymbolLayer("phone-layer", "phone-source").withProperties(
-                                iconImage("phone-icon"),
-                                iconSize(0.03f),
-                                iconAllowOverlap(true)
-                            )
-                            style.addLayer(phoneLayer)
+                                val homeFeature = Feature.fromGeometry(
+                                    Point.fromLngLat(
+                                        viewModel.homePosition.lon,
+                                        viewModel.homePosition.lat
+                                    )
+                                ).apply {
+                                    addStringProperty("title", "Home")
+                                }
+                                val waypointSizeScaling = 0.45f
 
-                            val shipLayer = SymbolLayer("ship-layer", "point-source").withProperties(
-                                iconImage("ship-icon"),
-                                iconSize(0.04f),
-                                iconAllowOverlap(true)
-                            )
-                            style.addLayer(shipLayer)
+                                val poiSource = GeoJsonSource("poi-source", FeatureCollection.fromFeatures(emptyArray()))
+                                style.addSource(poiSource)
+                                val poiLayer = SymbolLayer("poi-layer", "poi-source")
+                                    .withProperties(
+                                        iconImage("poi-icon"),
+                                        iconSize(waypointSizeScaling),
+                                        iconAllowOverlap(true),
+                                        visibility(if (viewModel.arePoiVisible) Property.VISIBLE else Property.NONE)
+                                    )
+                                style.addLayer(poiLayer)
 
-                            val position = CameraPosition.Builder()
-                                .target(LatLng(viewModel.shipPosition.lat, viewModel.shipPosition.lon))
-                                .zoom(13.0)
-                                .build()
-                            mapboxMap.moveCamera(CameraUpdateFactory.newCameraPosition(position))
-                            mapboxMap.uiSettings.isRotateGesturesEnabled = false
+                                val homeSource = GeoJsonSource("home-source", FeatureCollection.fromFeatures(listOf(homeFeature)))
+                                homeSourceRef = homeSource
+                                style.addSource(homeSource)
+
+                                val homeLayer = SymbolLayer("home-layer", "home-source").withProperties(
+                                    iconImage("home-icon"),
+                                    iconSize(0.045f),
+                                    iconAllowOverlap(true)
+                                )
+                                style.addLayer(homeLayer)
+
+                                val phoneSource = GeoJsonSource("phone-source", FeatureCollection.fromFeatures(emptyArray()))
+                                phoneSourceRef = phoneSource
+                                style.addSource(phoneSource)
+
+                                val phoneLayer = SymbolLayer("phone-layer", "phone-source").withProperties(
+                                    iconImage("phone-icon"),
+                                    iconSize(0.03f),
+                                    iconAllowOverlap(true)
+                                )
+                                style.addLayer(phoneLayer)
+
+                                val shipLayer = SymbolLayer("ship-layer", "point-source").withProperties(
+                                    iconImage("ship-icon"),
+                                    iconSize(0.04f),
+                                    iconAllowOverlap(true)
+                                )
+                                style.addLayer(shipLayer)
+
+                                val position = CameraPosition.Builder()
+                                    .target(LatLng(viewModel.shipPosition.lat, viewModel.shipPosition.lon))
+                                    .zoom(13.0)
+                                    .build()
+                                mapboxMap.moveCamera(CameraUpdateFactory.newCameraPosition(position))
+                                mapboxMap.uiSettings.isRotateGesturesEnabled = false
+
+                                poiSource.setGeoJson(FeatureCollection.fromFeatures(viewModel.getPoiFeature()))
+                            }
                         }
                     }
+                },
+                modifier = modifier.fillMaxSize()
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        val shipPosition = viewModel.shipPosition
+                        val zoom = 16.0
+                        mapboxMapRef?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                LatLng(
+                                    shipPosition.lat,
+                                    shipPosition.lon
+                                ), zoom
+                            ),
+                            cameraZoomAnimationTime * 1000
+                        )
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.blue)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.current_location_tracker),
+                        contentDescription = "Center Map",
+                        tint = Color.White
+                    )
                 }
-            },
-            modifier = modifier.fillMaxSize()
-        )
+
+                FloatingActionButton(
+                    onClick = {
+                        viewModel.arePoiVisible = !viewModel.arePoiVisible
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 88.dp, bottom = 16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.teal_700)
+                ) {
+                    Icon(
+                        imageVector = if (!viewModel.arePoiVisible)
+                            Icons.Default.Visibility
+                        else
+                            Icons.Default.VisibilityOff,
+                        contentDescription = "POI Visibility",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
     }
 
 
