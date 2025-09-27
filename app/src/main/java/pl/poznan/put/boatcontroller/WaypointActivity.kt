@@ -165,420 +165,6 @@ class WaypointActivity : ComponentActivity() {
         return configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
 
-    @OptIn(ExperimentalPermissionsApi::class)
-    @Composable
-    fun WaypointControlScreen(waypointVm: WaypointViewModel) {
-        val map = waypointVm.mapLibreMapState.value
-        val context = LocalContext.current
-        val waypoints = waypointVm.waypointPositions.toList()
-        val poi = waypointVm.poiPositions.toList()
-        val poiToggle = waypointVm.arePoiVisible
-        val phonePosition = waypointVm.phonePosition.value
-        val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-        val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
-
-        LaunchedEffect(Unit) {
-            if (!locationPermissionState.status.isGranted) {
-                locationPermissionState.launchPermissionRequest()
-            } else {
-                try {
-                    fusedLocationClient.lastLocation
-                        .addOnSuccessListener { location ->
-                            if (location != null) {
-                                waypointVm.setPhonePosition(location.latitude, location.longitude)
-                                waypointVm.saveCameraPosition(location.latitude, location.longitude, 13.0)
-                                Log.d("PHONE_LOCATION", "Lat: ${location.latitude}, Lon: ${location.longitude}")
-                            } else {
-                                waypointVm.setPhonePositionFallback()
-                                Log.d("PHONE_LOCATION", "Fallback to ship")
-                            }
-                        }
-                        .addOnFailureListener {
-                            waypointVm.setPhonePositionFallback()
-                            Log.d("PHONE_LOCATION", "Fallback to ship on failure")
-                        }
-                } catch (e: SecurityException) {
-                    waypointVm.setPhonePositionFallback()
-                }
-            }
-        }
-
-        LaunchedEffect(phonePosition, map?.style) {
-            val mapboxMap = map ?: return@LaunchedEffect
-            val style = mapboxMap.style ?: return@LaunchedEffect
-            val pos = phonePosition ?: return@LaunchedEffect
-
-            val phoneFeature = Feature.fromGeometry(Point.fromLngLat(pos[1], pos[0]))
-            phoneFeature.addStringProperty("title", "Phone")
-            style.getSourceAs<GeoJsonSource>("phone-source")
-                ?.setGeoJson(FeatureCollection.fromFeatures(listOf(phoneFeature)))
-
-            val saved = waypointVm.cameraPosition.value
-
-            val targetLat = saved?.lat ?: pos[0]
-            val targetLng = saved?.lon ?: pos[1]
-            val zoom = saved?.zoom ?: 13.0
-
-            mapboxMap.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(targetLat, targetLng),
-                    zoom
-                )
-            )
-        }
-
-        LaunchedEffect(waypoints.toList()) {
-            val mapboxMap = map ?: return@LaunchedEffect
-            val style = mapboxMap.style ?: return@LaunchedEffect
-
-            waypoints.forEach { wp ->
-                val bitmap = getOrCreateWaypointBitmap(wp.no, context)
-                addWaypointBitmapToStyleIfNeeded(wp.no, bitmap, style)
-            }
-            refreshMapFeatures(style)
-        }
-
-        LaunchedEffect(poi) {
-            val mapboxMap = map ?: return@LaunchedEffect
-            val style = mapboxMap.style ?: return@LaunchedEffect
-
-            refreshMapFeatures(style)
-        }
-
-        LaunchedEffect(poiToggle) {
-            val mapboxMap = map ?: return@LaunchedEffect
-            val style = mapboxMap.style ?: return@LaunchedEffect
-
-            style.getLayer("poi-layer")?.setProperties(
-                visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
-            )
-        }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            MapTab(
-                waypointVm = waypointVm,
-            )
-
-            SlidingToolbar(waypointVm)
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
-                FloatingActionButton(
-                    onClick = {
-                        val shipPosition = waypointVm.shipPosition.value
-                        val zoom = 16.0
-                        map?.animateCamera(
-                            CameraUpdateFactory.newLatLngZoom(
-                                LatLng(
-                                    shipPosition.lat,
-                                    shipPosition.lon
-                                ), zoom
-                            ),
-                            cameraZoomAnimationTime * 1000
-                        )
-                    },
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp)
-                        .shadow(16.dp, CircleShape, clip = false)
-                        .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.blue)
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.current_location_tracker),
-                        contentDescription = "Center Map",
-                        tint = Color.White
-                    )
-                }
-
-                FloatingActionButton(
-                    onClick = {
-                        waypointVm.arePoiVisible = !waypointVm.arePoiVisible
-                    },
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 88.dp, bottom = 16.dp)
-                        .shadow(16.dp, CircleShape, clip = false)
-                        .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.teal_700)
-                ) {
-                    Icon(
-                        imageVector = if (!waypointVm.arePoiVisible)
-                            Icons.Default.Visibility
-                        else
-                            Icons.Default.VisibilityOff,
-                        contentDescription = "POI Visibility",
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-
-        FullScreenPopup(waypointVm.openPOIDialog, { waypointVm.openPOIDialog = false }, waypointVm.poiId, waypointVm.poiPositions, { id: Int, name: String -> waypointVm.updatePoiData(id, name, waypointVm.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> waypointVm.updatePoiData(id, waypointVm.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> waypointVm.deletePoi(id)
-            waypointVm.openPOIDialog = false
-        })
-    }
-
-    @Composable
-    fun MapTab(waypointVm: WaypointViewModel) {
-        val context = LocalContext.current
-        val mapView = remember { MapView(context) }
-
-        AndroidView(
-            factory = { mapView },
-            modifier = Modifier.fillMaxSize(),
-            update = { mapView ->
-            val styleJson = """
-                    {
-                      "version": 8,
-                      "sources": {
-                        "osm": {
-                          "type": "raster",
-                          "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-                          "tileSize": 256
-                        }
-                      },
-                      "layers": [
-                        {
-                          "id": "osm-layer",
-                          "type": "raster",
-                          "source": "osm"
-                        }
-                      ]
-                    }
-                """.trimIndent()
-
-                mapView.getMapAsync { mapboxMap ->
-                    mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                        waypointVm.setMapReady(mapboxMap)
-                        initializeMapSources(style)
-                        updateBitmaps(style, context)
-
-                        mapboxMap.uiSettings.isRotateGesturesEnabled = false
-                        refreshMapFeatures(style)
-
-                        mapboxMap.addOnMapClickListener { latLng ->
-                            val screenPoint = mapboxMap.projection.toScreenLocation(latLng)
-                            val features = mapboxMap.queryRenderedFeatures(screenPoint, "waypoint-layer")
-
-                            val clickedNo = features.firstOrNull()
-                                ?.getStringProperty("no")
-                                ?.toIntOrNull()
-
-                            when (waypointVm.waypointMode) {
-                                WaypointMode.WAYPOINT_ADD -> {
-                                    val waypointNo = waypointVm.getNextAvailableWaypointNo()
-
-                                    waypointVm.addWaypoint(latLng.longitude, latLng.latitude)
-                                    val bitmap = getOrCreateWaypointBitmap(waypointNo, context)
-                                    addWaypointBitmapToStyleIfNeeded(waypointNo, bitmap, style)
-                                    true
-                                }
-
-                                WaypointMode.WAYPOINT_DELETE -> {
-                                    if (clickedNo != null) {
-                                        waypointVm.removeWaypoint(clickedNo)
-                                        true
-                                    } else false
-                                }
-
-                                WaypointMode.WAYPOINT_MOVE -> {
-                                    val toMoveNo = waypointVm.waypointToMoveNo
-                                    if (toMoveNo == null) {
-                                        if (clickedNo != null && waypointVm.getWaypointByNo(clickedNo)?.isCompleted == false) {
-                                            waypointVm.waypointToMoveNo = clickedNo
-
-                                            val bitmap = waypointVm.waypointBitmaps[clickedNo]!!
-                                            val selectedBitmap = bitmap.scale(
-                                                (bitmap.width * 1.2f).toInt(),
-                                                (bitmap.height * 1.2f).toInt()
-                                            )
-                                            style.addImage("waypoint-icon-$clickedNo", selectedBitmap)
-                                        }
-                                    } else {
-                                        waypointVm.moveWaypoint(toMoveNo, latLng.longitude, latLng.latitude)
-                                        waypointVm.waypointToMoveNo = null
-
-                                        val bitmap = waypointVm.waypointBitmaps[toMoveNo]!!
-                                        style.addImage("waypoint-icon-$toMoveNo", bitmap)
-                                    }
-                                    true
-                                }
-
-                                else -> false
-                            }
-                            val poiObject =
-                                mapboxMap.projection.toScreenLocation(latLng)
-                            val poiFeatures = mapboxMap.queryRenderedFeatures(
-                                poiObject,
-                                "poi-layer"
-                            )
-
-                            if (poiFeatures.isNotEmpty()) {
-                                val clickedFeature = poiFeatures.first()
-                                val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
-                                if (id != null) {
-                                    Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
-                                    waypointVm.poiId = waypointVm.poiPositions.indexOfFirst { it.id == id }
-                                    waypointVm.openPOIDialog = true
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        refreshMapFeatures(style)
-                    }
-                    waypointVm.mapLibreMapState.value = mapboxMap
-                }
-            }
-        )
-    }
-
-    fun initializeMapSources(style: Style) {
-        val waypointSizeScaling = 0.45f
-
-        // Waypoint connections
-        style.addSource(GeoJsonSource("waypoint-connections-source", FeatureCollection.fromFeatures(emptyArray())))
-        val connectionLayer = LineLayer("waypoint-connections-layer", "waypoint-connections-source")
-            .withProperties(
-                lineColor(Color.Black.toArgb()),
-                lineWidth(2.0f),
-                lineDasharray(arrayOf(2f, 2f)),
-                lineCap(Property.LINE_CAP_ROUND),
-                lineJoin(Property.LINE_JOIN_ROUND)
-            )
-        style.addLayer(connectionLayer)
-
-        // POI Waypoints
-        style.addSource(GeoJsonSource("poi-source", FeatureCollection.fromFeatures(emptyArray())))
-        val poiLayer = SymbolLayer("poi-layer", "poi-source")
-            .withProperties(
-                iconImage("poi-icon"),
-                iconSize(waypointSizeScaling),
-                iconAllowOverlap(true),
-                visibility(if (waypointVm.arePoiVisible) Property.VISIBLE else Property.NONE)
-            )
-        style.addLayer(poiLayer)
-
-        // Waypoints
-        style.addSource(GeoJsonSource("waypoint-source", FeatureCollection.fromFeatures(emptyArray())))
-        val waypointLayer = SymbolLayer("waypoint-layer", "waypoint-source")
-            .withProperties(
-                iconImage(get("icon")),
-                iconSize(waypointSizeScaling),
-                iconAllowOverlap(true),
-            )
-        style.addLayer(waypointLayer)
-
-        // Ship
-        style.addSource(GeoJsonSource("ship-source", waypointVm.getShipFeature()))
-        val shipLayer = SymbolLayer("ship-layer", "ship-source")
-            .withProperties(
-                iconImage("ship-icon"),
-                iconSize(0.07f),
-                iconAllowOverlap(true)
-            )
-        style.addLayer(shipLayer)
-
-
-        // Phone location
-        style.addSource(GeoJsonSource("phone-source", FeatureCollection.fromFeatures(emptyArray())))
-        val phoneLayer = SymbolLayer("phone-layer", "phone-source")
-            .withProperties(
-                iconImage("phone-icon"),
-                iconSize(0.03f),
-                iconAllowOverlap(true)
-            )
-        style.addLayer(phoneLayer)
-    }
-
-    fun refreshMapFeatures(style: Style) {
-        style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
-            ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getConnectionLinesFeature()))
-        style.getSourceAs<GeoJsonSource>("poi-source")
-            ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getPoiFeature()))
-        style.getSourceAs<GeoJsonSource>("waypoint-source")
-            ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getWaypointsFeature()))
-        style.getSourceAs<GeoJsonSource>("ship-source")
-            ?.setGeoJson(waypointVm.getShipFeature())
-        style.getSourceAs<GeoJsonSource>("phone-source")
-            ?.setGeoJson(waypointVm.getPhoneLocationFeature())
-//        Log.d("WAYPOINT_BITMAPS_CACHE", "Aktualna zawartość waypointBitmaps:")
-//        waypointVm.waypointBitmaps.forEach { (no, bitmap) ->
-//            Log.d(
-//                "WAYPOINT_BITMAPS_CACHE",
-//                "no=$no | bitmap=${bitmap.width}x${bitmap.height}"
-//            )
-//        }
-    }
-
-    fun getOrCreateWaypointBitmap(no: Int, context: Context): Bitmap {
-        waypointVm.waypointBitmaps[no]?.let { return it }
-
-        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
-        val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
-
-        val bitmap = createWaypointBitmap(
-            waypointDrawable,
-            indicationDrawable,
-            no.toString()
-        )
-        waypointVm.setWaypointBitmap(no, bitmap)
-        return bitmap
-    }
-
-    fun addWaypointBitmapToStyleIfNeeded(no: Int, bitmap: Bitmap, style: Style) {
-        val bitmapId = "waypoint-icon-$no"
-        if (style.getImage(bitmapId) == null) {
-            style.addImage(bitmapId, bitmap)
-        }
-    }
-
-    fun updateBitmaps(style: Style, context: Context) {
-        val phoneDrawable = ContextCompat.getDrawable(context, R.drawable.steering_wheel)!!
-        val phoneBitmap = createBitmap(
-            phoneDrawable.intrinsicWidth,
-            phoneDrawable.intrinsicHeight,
-        ).apply {
-            val canvas = Canvas(this)
-            phoneDrawable.setBounds(0, 0, canvas.width, canvas.height)
-            phoneDrawable.draw(canvas)
-        }
-
-        val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
-        val shipBitmap = createBitmap(
-            shipDrawable.intrinsicWidth,
-            shipDrawable.intrinsicHeight
-        ).apply {
-            val canvas = Canvas(this)
-            shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
-            shipDrawable.draw(canvas)
-        }
-
-        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
-        val indicationDrawable = WaypointIndicationType.STAR.toWaypointIndication(context)
-
-        val poiBitmap = createWaypointBitmap(
-            waypointDrawable,
-            indicationDrawable,
-        )
-
-        style.addImage("phone-icon", phoneBitmap)
-        style.addImage("ship-icon", shipBitmap)
-        style.addImage("poi-icon", poiBitmap)
-
-        waypointVm.waypointPositions.forEach { wp ->
-            val bitmap = waypointVm.waypointBitmaps[wp.no]
-                ?: getOrCreateWaypointBitmap(wp.no, context)
-            addWaypointBitmapToStyleIfNeeded(wp.no, bitmap, style)
-        }
-    }
-
     @Composable
     fun SlidingToolbar(
         waypointVm: WaypointViewModel,
@@ -753,6 +339,417 @@ class WaypointActivity : ComponentActivity() {
                 contentDescription = null,
                 tint = Color.White
             )
+        }
+    }
+
+    @OptIn(ExperimentalPermissionsApi::class)
+    @Composable
+    fun WaypointControlScreen(waypointVm: WaypointViewModel) {
+        val map = waypointVm.mapLibreMapState.value
+        val context = LocalContext.current
+        val waypoints = waypointVm.waypointPositions.toList()
+        val poi = waypointVm.poiPositions.toList()
+        val poiToggle = waypointVm.arePoiVisible
+        val phonePosition = waypointVm.phonePosition.value
+        val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+        val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
+
+        LaunchedEffect(Unit) {
+            if (!locationPermissionState.status.isGranted) {
+                locationPermissionState.launchPermissionRequest()
+            } else {
+                try {
+                    fusedLocationClient.lastLocation
+                        .addOnSuccessListener { location ->
+                            if (location != null) {
+                                waypointVm.setPhonePosition(location.latitude, location.longitude)
+                                waypointVm.saveCameraPosition(location.latitude, location.longitude, 13.0)
+                                Log.d("PHONE_LOCATION", "Lat: ${location.latitude}, Lon: ${location.longitude}")
+                            } else {
+                                waypointVm.setPhonePositionFallback()
+                                Log.d("PHONE_LOCATION", "Fallback to ship")
+                            }
+                        }
+                        .addOnFailureListener {
+                            waypointVm.setPhonePositionFallback()
+                            Log.d("PHONE_LOCATION", "Fallback to ship on failure")
+                        }
+                } catch (e: SecurityException) {
+                    waypointVm.setPhonePositionFallback()
+                }
+            }
+        }
+
+        LaunchedEffect(phonePosition, map?.style) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+            val pos = phonePosition ?: return@LaunchedEffect
+
+            val phoneFeature = Feature.fromGeometry(Point.fromLngLat(pos[1], pos[0]))
+            phoneFeature.addStringProperty("title", "Phone")
+            style.getSourceAs<GeoJsonSource>("phone-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(listOf(phoneFeature)))
+
+            val saved = waypointVm.cameraPosition.value
+
+            val targetLat = saved?.lat ?: pos[0]
+            val targetLng = saved?.lon ?: pos[1]
+            val zoom = saved?.zoom ?: 13.0
+
+            mapboxMap.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(targetLat, targetLng),
+                    zoom
+                )
+            )
+        }
+
+        LaunchedEffect(waypoints.toList()) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            waypoints.forEach { wp ->
+                val bitmap = getOrCreateWaypointBitmap(wp.no, context)
+                addWaypointBitmapToStyle(wp.no, bitmap, style)
+            }
+            updateMapFeatures(style)
+        }
+
+        LaunchedEffect(poi) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            updateMapFeatures(style)
+        }
+
+        LaunchedEffect(poiToggle) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+
+            style.getLayer("poi-layer")?.setProperties(
+                visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
+            )
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            MapTab(
+                waypointVm = waypointVm,
+            )
+
+            SlidingToolbar(waypointVm)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        val shipPosition = waypointVm.shipPosition.value
+                        val zoom = 16.0
+                        map?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                LatLng(
+                                    shipPosition.lat,
+                                    shipPosition.lon
+                                ), zoom
+                            ),
+                            cameraZoomAnimationTime * 1000
+                        )
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.blue)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.current_location_tracker),
+                        contentDescription = "Center Map",
+                        tint = Color.White
+                    )
+                }
+
+                FloatingActionButton(
+                    onClick = {
+                        waypointVm.arePoiVisible = !waypointVm.arePoiVisible
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 88.dp, bottom = 16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.teal_700)
+                ) {
+                    Icon(
+                        imageVector = if (!waypointVm.arePoiVisible)
+                            Icons.Default.Visibility
+                        else
+                            Icons.Default.VisibilityOff,
+                        contentDescription = "POI Visibility",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+
+        FullScreenPopup(waypointVm.openPOIDialog, { waypointVm.openPOIDialog = false }, waypointVm.poiId, waypointVm.poiPositions, { id: Int, name: String -> waypointVm.updatePoiData(id, name, waypointVm.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> waypointVm.updatePoiData(id, waypointVm.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> waypointVm.deletePoi(id)
+            waypointVm.openPOIDialog = false
+        })
+    }
+
+    @Composable
+    fun MapTab(waypointVm: WaypointViewModel) {
+        val context = LocalContext.current
+        val mapView = remember { MapView(context) }
+
+        AndroidView(
+            factory = { mapView },
+            modifier = Modifier.fillMaxSize(),
+            update = { mapView ->
+                val styleJson = """
+                {
+                  "version": 8,
+                  "sources": {
+                    "osm": {
+                      "type": "raster",
+                      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                      "tileSize": 256
+                    }
+                  },
+                  "layers": [
+                    {
+                      "id": "osm-layer",
+                      "type": "raster",
+                      "source": "osm"
+                    }
+                  ]
+                }
+                """.trimIndent()
+
+                mapView.getMapAsync { mapboxMap ->
+                    mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                        waypointVm.setMapReady(mapboxMap)
+                        initializeMapSources(style)
+                        updateBitmaps(style, context)
+                        initializeMapLayers(style)
+
+                        mapboxMap.uiSettings.isRotateGesturesEnabled = false
+                        updateMapFeatures(style)
+
+                        mapboxMap.addOnMapClickListener { latLng ->
+                            val screenPoint = mapboxMap.projection.toScreenLocation(latLng)
+                            val features = mapboxMap.queryRenderedFeatures(screenPoint, "waypoint-layer")
+
+                            val clickedNo = features.firstOrNull()
+                                ?.getStringProperty("no")
+                                ?.toIntOrNull()
+
+                            when (waypointVm.waypointMode) {
+                                WaypointMode.WAYPOINT_ADD -> {
+                                    val waypointNo = waypointVm.getNextAvailableWaypointNo()
+
+                                    waypointVm.addWaypoint(latLng.longitude, latLng.latitude)
+                                    val bitmap = getOrCreateWaypointBitmap(waypointNo, context)
+                                    addWaypointBitmapToStyle(waypointNo, bitmap, style)
+                                    true
+                                }
+
+                                WaypointMode.WAYPOINT_DELETE -> {
+                                    if (clickedNo != null) {
+                                        waypointVm.removeWaypoint(clickedNo)
+                                        true
+                                    } else false
+                                }
+
+                                WaypointMode.WAYPOINT_MOVE -> {
+                                    val toMoveNo = waypointVm.waypointToMoveNo
+                                    if (toMoveNo == null) {
+                                        if (clickedNo != null && waypointVm.getWaypointByNo(clickedNo)?.isCompleted == false) {
+                                            waypointVm.waypointToMoveNo = clickedNo
+
+                                            val bitmap = waypointVm.waypointBitmaps[clickedNo]!!
+                                            val selectedBitmap = bitmap.scale(
+                                                (bitmap.width * 1.2f).toInt(),
+                                                (bitmap.height * 1.2f).toInt()
+                                            )
+                                            style.addImage("waypoint-icon-$clickedNo", selectedBitmap)
+                                        }
+                                    } else {
+                                        waypointVm.moveWaypoint(toMoveNo, latLng.longitude, latLng.latitude)
+                                        waypointVm.waypointToMoveNo = null
+
+                                        val bitmap = waypointVm.waypointBitmaps[toMoveNo]!!
+                                        style.addImage("waypoint-icon-$toMoveNo", bitmap)
+                                    }
+                                    true
+                                }
+
+                                else -> false
+                            }
+                            val poiObject =
+                                mapboxMap.projection.toScreenLocation(latLng)
+                            val poiFeatures = mapboxMap.queryRenderedFeatures(
+                                poiObject,
+                                "poi-layer"
+                            )
+
+                            if (poiFeatures.isNotEmpty()) {
+                                val clickedFeature = poiFeatures.first()
+                                val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
+                                if (id != null) {
+                                    Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
+                                    waypointVm.poiId = waypointVm.poiPositions.indexOfFirst { it.id == id }
+                                    waypointVm.openPOIDialog = true
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        updateMapFeatures(style)
+                    }
+                    waypointVm.mapLibreMapState.value = mapboxMap
+                }
+            }
+        )
+    }
+
+    fun initializeMapSources(style: Style) {
+        style.addSource(GeoJsonSource("waypoint-connections-source", FeatureCollection.fromFeatures(emptyArray())))
+        style.addSource(GeoJsonSource("poi-source", FeatureCollection.fromFeatures(emptyArray())))
+        style.addSource(GeoJsonSource("waypoint-source", FeatureCollection.fromFeatures(emptyArray())))
+        style.addSource(GeoJsonSource("ship-source", waypointVm.getShipFeature()))
+        style.addSource(GeoJsonSource("phone-source", FeatureCollection.fromFeatures(emptyArray())))
+    }
+
+    fun initializeMapLayers(style: Style) {
+        val waypointSizeScaling = 0.45f
+        val connectionLayer = LineLayer("waypoint-connections-layer", "waypoint-connections-source")
+            .withProperties(
+                lineColor(Color.Black.toArgb()),
+                lineWidth(2.0f),
+                lineDasharray(arrayOf(2f, 2f)),
+                lineCap(Property.LINE_CAP_ROUND),
+                lineJoin(Property.LINE_JOIN_ROUND)
+            )
+        style.addLayer(connectionLayer)
+
+        val poiLayer = SymbolLayer("poi-layer", "poi-source")
+            .withProperties(
+                iconImage("poi-icon"),
+                iconSize(waypointSizeScaling),
+                iconAllowOverlap(true),
+                visibility(if (waypointVm.arePoiVisible) Property.VISIBLE else Property.NONE)
+            )
+        style.addLayer(poiLayer)
+
+        val waypointLayer = SymbolLayer("waypoint-layer", "waypoint-source")
+            .withProperties(
+                iconImage(get("icon")),
+                iconSize(waypointSizeScaling),
+                iconAllowOverlap(true),
+            )
+        style.addLayer(waypointLayer)
+
+        val shipLayer = SymbolLayer("ship-layer", "ship-source")
+            .withProperties(
+                iconImage("ship-icon"),
+                iconSize(0.07f),
+                iconAllowOverlap(true)
+            )
+        style.addLayer(shipLayer)
+
+        val phoneLayer = SymbolLayer("phone-layer", "phone-source")
+            .withProperties(
+                iconImage("phone-icon"),
+                iconSize(0.03f),
+                iconAllowOverlap(true)
+            )
+        style.addLayer(phoneLayer)
+    }
+
+    fun updateBitmaps(style: Style, context: Context) {
+        val phoneDrawable = ContextCompat.getDrawable(context, R.drawable.steering_wheel)!!
+        val phoneBitmap = createBitmap(
+            phoneDrawable.intrinsicWidth,
+            phoneDrawable.intrinsicHeight,
+        ).apply {
+            val canvas = Canvas(this)
+            phoneDrawable.setBounds(0, 0, canvas.width, canvas.height)
+            phoneDrawable.draw(canvas)
+        }
+
+        val shipDrawable = ContextCompat.getDrawable(context, R.drawable.ship)!!
+        val shipBitmap = createBitmap(
+            shipDrawable.intrinsicWidth,
+            shipDrawable.intrinsicHeight
+        ).apply {
+            val canvas = Canvas(this)
+            shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
+            shipDrawable.draw(canvas)
+        }
+
+        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+        val indicationDrawable = WaypointIndicationType.STAR.toWaypointIndication(context)
+
+        val poiBitmap = createWaypointBitmap(
+            waypointDrawable,
+            indicationDrawable,
+        )
+
+        style.addImage("phone-icon", phoneBitmap)
+        style.addImage("ship-icon", shipBitmap)
+        style.addImage("poi-icon", poiBitmap)
+
+        waypointVm.waypointPositions.forEach { wp ->
+            val bitmap = waypointVm.waypointBitmaps[wp.no]
+                ?: getOrCreateWaypointBitmap(wp.no, context)
+            addWaypointBitmapToStyle(wp.no, bitmap, style)
+        }
+    }
+
+    fun updateMapFeatures(style: Style) {
+        style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
+            ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getConnectionLinesFeature()))
+        style.getSourceAs<GeoJsonSource>("poi-source")
+            ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getPoiFeature()))
+        style.getSourceAs<GeoJsonSource>("waypoint-source")
+            ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getWaypointsFeature()))
+        style.getSourceAs<GeoJsonSource>("ship-source")
+            ?.setGeoJson(waypointVm.getShipFeature())
+        style.getSourceAs<GeoJsonSource>("phone-source")
+            ?.setGeoJson(waypointVm.getPhoneLocationFeature())
+//        Log.d("WAYPOINT_BITMAPS_CACHE", "Aktualna zawartość waypointBitmaps:")
+//        waypointVm.waypointBitmaps.forEach { (no, bitmap) ->
+//            Log.d(
+//                "WAYPOINT_BITMAPS_CACHE",
+//                "no=$no | bitmap=${bitmap.width}x${bitmap.height}"
+//            )
+//        }
+    }
+
+    fun getOrCreateWaypointBitmap(no: Int, context: Context): Bitmap {
+        waypointVm.waypointBitmaps[no]?.let { return it }
+
+        val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
+        val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
+
+        val bitmap = createWaypointBitmap(
+            waypointDrawable,
+            indicationDrawable,
+            no.toString()
+        )
+        waypointVm.setWaypointBitmap(no, bitmap)
+        return bitmap
+    }
+
+    fun addWaypointBitmapToStyle(no: Int, bitmap: Bitmap, style: Style) {
+        val bitmapId = "waypoint-icon-$no"
+        if (style.getImage(bitmapId) == null) {
+            style.addImage(bitmapId, bitmap)
         }
     }
 

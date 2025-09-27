@@ -1,26 +1,34 @@
 package pl.poznan.put.boatcontroller
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.util.Log
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.ApiService
+import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
 import pl.poznan.put.boatcontroller.dataclass.POIObject
 import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
+import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.mappers.toDomain
 import java.util.Base64
 
@@ -32,20 +40,33 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     var openPOIDialog by mutableStateOf(false)
     var poiId by mutableIntStateOf(-1)
 
-    private var _poiPositions = mutableStateListOf<POIObject>()
-    var poiPositions: SnapshotStateList<POIObject> = _poiPositions
-
     var leftEnginePower by mutableIntStateOf(0)
     var rightEnginePower by mutableIntStateOf(0)
     var selectedTab by mutableIntStateOf(0)
 
-    var waypointStartCoordinates = ShipPosition(52.404846, 16.959285)
-    var shipPosition by mutableStateOf<ShipPosition>(waypointStartCoordinates)
-        private set
+    private val _mapLibreMapState = mutableStateOf<MapLibreMap?>(null)
+    val mapLibreMapState: MutableState<MapLibreMap?> = _mapLibreMapState
 
-    var waypointHomeCoordinates = HomePosition(0.0, 0.0)
-    var homePosition by mutableStateOf<HomePosition>(waypointHomeCoordinates)
-        private set
+    private val _phonePosition = mutableStateOf<DoubleArray?>(null)
+    val phonePosition: MutableState<DoubleArray?> = _phonePosition
+
+    private val _homePosition = mutableStateOf<HomePosition>(HomePosition(0.0, 0.0))
+    val homePosition: MutableState<HomePosition> = _homePosition
+
+    private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
+    var shipPosition: MutableState<ShipPosition> = _shipPosition
+
+    private var _waypointPositions = mutableStateListOf<WaypointObject>()
+    var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
+
+    private var _poiPositions = mutableStateListOf<POIObject>()
+    var poiPositions: SnapshotStateList<POIObject> = _poiPositions
+
+    private val _waypointBitmaps = mutableStateMapOf<Int, Bitmap>()
+    val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
+
+    private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
+    val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
     var currentSpeed by mutableFloatStateOf(0.0f)
         private set
@@ -62,13 +83,13 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     var arePoiVisible by mutableStateOf(false)
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
-        shipPosition = ShipPosition(latitude, longitude)
+        _shipPosition.value = ShipPosition(latitude, longitude)
         currentSpeed = speed
         println("Ship position: $shipPosition")
     }
 
     fun updateHomePosition(homePosition: HomePosition) {
-        this.homePosition = homePosition
+        _homePosition.value = homePosition
         println("Home position: $homePosition")
     }
 
@@ -96,6 +117,20 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 Log.d("Get Mission Id", missionId.toString())
                 backendApi = ApiClient.create(getApplication())
                 loadMission()
+                backendApi?.let { api ->
+                    val response = api.getWaypointsList(missionId)
+                    if (response.isSuccessful) {
+                        val list = response.body()!!.map { it.toDomain() }
+                        if (list.isNotEmpty()) {
+                            _waypointPositions.clear()
+                            _waypointPositions.addAll(list)
+                        }
+                        Log.d("Way", _waypointPositions.toString())
+                    } else {
+                        Log.e("API", "Błąd pobierania waypoints")
+                    }
+
+                }
             } catch (e: Exception) {
                 Log.e("API", "Błąd logowania", e)
             }
@@ -137,7 +172,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 data[4].toDouble(),
                 data[5].toDouble())
             if(data.size > 6) {
-                homePosition = HomePosition(data[6].toDouble(), data[7].toDouble())
+                _homePosition.value = HomePosition(data[6].toDouble(), data[7].toDouble())
             }
             mapUpdate(latitude, longitude, currentSpeed)
             updateSensorsData(sensorData)
@@ -173,6 +208,41 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         SocketClientManager.sendMessage(message)
     }
 
+    fun getShipFeature(): FeatureCollection {
+        val shipCoordinates = Point.fromLngLat(
+            _shipPosition.value.lon,
+            _shipPosition.value.lat
+        )
+
+        val shipFeature = Feature.fromGeometry(shipCoordinates).apply {
+            addStringProperty("title", "Ship")
+        }
+
+        return FeatureCollection.fromFeature(shipFeature)
+    }
+
+    fun getHomeFeature(): FeatureCollection {
+        val shipCoordinates = Point.fromLngLat(
+            _homePosition.value.lon,
+            _homePosition.value.lat
+        )
+
+        val shipFeature = Feature.fromGeometry(shipCoordinates).apply {
+            addStringProperty("title", "Home")
+        }
+
+        return FeatureCollection.fromFeature(shipFeature)
+    }
+
+    fun getWaypointsFeature(): List<Feature> {
+        return _waypointPositions.map {
+            Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
+                addStringProperty("no", it.no.toString())
+                addStringProperty("icon", "waypoint-icon-${it.no}")
+            }
+        }
+    }
+
     fun getPoiFeature(): List<Feature> {
         Log.d("POI", _poiPositions.toString())
         return _poiPositions.map {
@@ -181,6 +251,59 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 addStringProperty("icon", "poi-icon")
             }
         }
+    }
+
+    fun getPhoneLocationFeature(): FeatureCollection {
+        val phoneCoordinates = Point.fromLngLat(
+            _phonePosition.value?.get(0) ?: _shipPosition.value.lon,
+            _phonePosition.value?.get(1) ?: _shipPosition.value.lat,
+        )
+
+        val phoneFeature = Feature.fromGeometry(phoneCoordinates).apply {
+            addStringProperty("title", "Phone")
+        }
+
+        return FeatureCollection.fromFeature(phoneFeature)
+    }
+
+    fun getConnectionLinesFeature(): List<Feature> {
+        val lines = mutableListOf<Feature>()
+        val waypoints = _waypointPositions.sortedBy { it.no }
+
+        for (i in 0 until waypoints.size - 1) {
+            val start = waypoints[i]
+            val end = waypoints[i + 1]
+            val line = LineString.fromLngLats(
+                listOf(
+                    Point.fromLngLat(start.lon, start.lat),
+                    Point.fromLngLat(end.lon, end.lat)
+                )
+            )
+            lines.add(Feature.fromGeometry(line))
+        }
+
+        return lines
+    }
+
+    fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
+        _waypointBitmaps[id] = bitmap
+    }
+
+    fun setPhonePosition(lat: Double, lon: Double) {
+        _phonePosition.value = doubleArrayOf(lat, lon)
+    }
+
+    fun setPhonePositionFallback() {
+        val shipPos = _shipPosition.value
+        setPhonePosition(shipPos.lat, shipPos.lon)
+    }
+
+    fun setMapReady(map: MapLibreMap) {
+        _mapLibreMapState.value = map
+    }
+
+    fun saveCameraPosition(lat: Double, lng: Double, zoom: Double) {
+        _cameraPosition.value = CameraPositionState(lat, lng, zoom)
     }
 
     fun updatePoiData(id: Int, name: String, description: String) {

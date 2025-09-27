@@ -371,8 +371,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getShipFeature(): FeatureCollection {
         val shipCoordinates = Point.fromLngLat(
-            shipPosition.value.lon,
-            shipPosition.value.lat
+            _shipPosition.value.lon,
+            _shipPosition.value.lat
         )
 
         val shipFeature = Feature.fromGeometry(shipCoordinates).apply {
@@ -403,8 +403,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getPhoneLocationFeature(): FeatureCollection {
         val phoneCoordinates = Point.fromLngLat(
-            phonePosition.value?.get(0) ?: shipPosition.value.lon,
-            phonePosition.value?.get(1) ?: shipPosition.value.lat,
+            _phonePosition.value?.get(0) ?: _shipPosition.value.lon,
+            _phonePosition.value?.get(1) ?: _shipPosition.value.lat,
         )
 
         val phoneFeature = Feature.fromGeometry(phoneCoordinates).apply {
