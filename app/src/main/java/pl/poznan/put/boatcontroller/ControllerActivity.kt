@@ -111,6 +111,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import org.maplibre.android.style.layers.SymbolLayer
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
+import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
@@ -258,7 +259,9 @@ class ControllerActivity: ComponentActivity() {
         val isTablet = isTablet(this)
         var isSyncOn by remember { mutableStateOf(false) }
 
-        Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Row(modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)) {
             FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
                 viewModel.openPOIDialog = false
             })
@@ -484,13 +487,14 @@ class ControllerActivity: ComponentActivity() {
                 modifier = Modifier
                     .offset {
                         IntOffset(
-                            x = if (rightSide) (-(trackWidth * (if (isTablet) 0.75f else 0.85f)).toPx()).toInt() else (trackWidth * 1.6f).toPx().toInt(),
+                            x = if (rightSide) (-(trackWidth * (if (isTablet) 0.75f else 0.85f)).toPx()).toInt() else (trackWidth * 1.6f).toPx()
+                                .toInt(),
                             y = with(density) {
                                 (-sliderOffset * ((sliderHeight.toPx() / 2) - (thumbHeight.toPx() * 0.40))).toInt()
                             }
                         )
                     }
-                    .width(trackWidth*2)
+                    .width(trackWidth * 2)
                     .height(thumbHeight),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -498,7 +502,7 @@ class ControllerActivity: ComponentActivity() {
                     modifier = Modifier
                         .offset(x = if (rightSide) trackWidth + 10.dp else -trackWidth - 10.dp)
                         .width(trackWidth + 10.dp)
-                        .height(trackWidth/2 - 2.dp)
+                        .height(trackWidth / 2 - 2.dp)
                         .background(Color.Black, RoundedCornerShape(4.dp))
                         .border(1.dp, Color.White, RoundedCornerShape(4.dp)),
                     contentAlignment = Alignment.Center
@@ -528,7 +532,7 @@ class ControllerActivity: ComponentActivity() {
                 modifier = Modifier
                     .rotate(-90f)
                     .width(100.dp)
-                    .scale(sliderHeight/100.dp, 1f)
+                    .scale(sliderHeight / 100.dp, 1f)
                     .alpha(0f),
             )
         }
@@ -543,7 +547,7 @@ class ControllerActivity: ComponentActivity() {
         val context = LocalContext.current
         val waypoints = viewModel.waypointPositions.toList()
         val poi = viewModel.poiPositions.toList()
-        val poiToggle = viewModel.arePoiVisible
+        val layersMode = viewModel.layersMode.value
         val homePosition = viewModel.homePosition
         val phonePosition = viewModel.phonePosition.value
         val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -617,13 +621,32 @@ class ControllerActivity: ComponentActivity() {
             updateMapFeatures(style)
         }
 
-        LaunchedEffect(poiToggle) {
+        LaunchedEffect(layersMode, map?.style) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
-            style.getLayer("poi-layer")?.setProperties(
-                visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
-            )
+            when (layersMode) {
+                MapLayersVisibilityMode.BOTH_VISIBLE -> {
+                    style.getLayer("waypoint-layer")?.setProperties(visibility(Property.VISIBLE))
+                    style.getLayer("waypoint-connections-layer")?.setProperties(visibility(Property.VISIBLE))
+                    style.getLayer("poi-layer")?.setProperties(visibility(Property.VISIBLE))
+                }
+                MapLayersVisibilityMode.WAYPOINTS -> {
+                    style.getLayer("waypoint-layer")?.setProperties(visibility(Property.VISIBLE))
+                    style.getLayer("waypoint-connections-layer")?.setProperties(visibility(Property.VISIBLE))
+                    style.getLayer("poi-layer")?.setProperties(visibility(Property.NONE))
+                }
+                MapLayersVisibilityMode.POI -> {
+                    style.getLayer("waypoint-layer")?.setProperties(visibility(Property.NONE))
+                    style.getLayer("waypoint-connections-layer")?.setProperties(visibility(Property.NONE))
+                    style.getLayer("poi-layer")?.setProperties(visibility(Property.VISIBLE))
+                }
+                MapLayersVisibilityMode.NONE -> {
+                    style.getLayer("waypoint-layer")?.setProperties(visibility(Property.NONE))
+                    style.getLayer("waypoint-connections-layer")?.setProperties(visibility(Property.NONE))
+                    style.getLayer("poi-layer")?.setProperties(visibility(Property.NONE))
+                }
+            }
         }
 
         LaunchedEffect(homePosition) {
@@ -761,9 +784,7 @@ class ControllerActivity: ComponentActivity() {
                 }
 
                 FloatingActionButton(
-                    onClick = {
-                        viewModel.arePoiVisible = !viewModel.arePoiVisible
-                    },
+                    onClick = { viewModel.toggleMapLayersMode() },
                     shape = CircleShape,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -772,14 +793,12 @@ class ControllerActivity: ComponentActivity() {
                         .clip(CircleShape),
                     containerColor = colorResource(id = R.color.teal_700)
                 ) {
-                    Icon(
-                        imageVector = if (!viewModel.arePoiVisible)
-                            Icons.Default.Visibility
-                        else
-                            Icons.Default.VisibilityOff,
-                        contentDescription = "POI Visibility",
-                        tint = Color.White
-                    )
+                    when (viewModel.layersMode.value) {
+                        MapLayersVisibilityMode.BOTH_VISIBLE -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_compass), "Waypoints visible")
+                        MapLayersVisibilityMode.WAYPOINTS -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_star), "POI visible")
+                        MapLayersVisibilityMode.POI -> Icon(Icons.Default.VisibilityOff, contentDescription = "None visible")
+                        MapLayersVisibilityMode.NONE -> Icon(Icons.Default.Visibility, contentDescription = "Both visible")
+                    }
                 }
             }
         }
@@ -788,7 +807,9 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun SonarTab(viewModel: ControllerViewModel) {
-        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier
+            .fillMaxHeight()
+            .fillMaxWidth(), contentAlignment = Alignment.Center) {
             viewModel.sonarData.let {
                 val bitmap = remember(viewModel.sonarData) {
                     BitmapFactory.decodeByteArray(viewModel.sonarData, 0, viewModel.sonarData.size)
@@ -827,7 +848,9 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun CameraTab(viewModel: ControllerViewModel) {
-        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier
+            .fillMaxHeight()
+            .fillMaxWidth(), contentAlignment = Alignment.Center) {
             viewModel.cameraFeed.let {
                 val imageBitmap = byteArrayToImageBitmap(it)
                 imageBitmap?.let { bitmap ->
@@ -872,7 +895,6 @@ class ControllerActivity: ComponentActivity() {
                 iconImage("poi-icon"),
                 iconSize(waypointSizeScaling),
                 iconAllowOverlap(true),
-                visibility(if (viewModel.arePoiVisible) Property.VISIBLE else Property.NONE)
             )
         style.addLayer(poiLayer)
 
@@ -993,6 +1015,29 @@ class ControllerActivity: ComponentActivity() {
         val bitmapId = "waypoint-icon-$no"
         if (style.getImage(bitmapId) == null) {
             style.addImage(bitmapId, bitmap)
+        }
+    }
+
+    @Composable
+    fun MapLayerVisibilityIcon(
+        badgeIcon: Painter,
+        contentDescription: String? = null
+    ) {
+        Box {
+            Icon(
+                imageVector = Icons.Default.Visibility,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(32.dp)
+            )
+            Icon(
+                painter = badgeIcon,
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(18.dp)
+                    .offset(x = 4.dp, y = (-4).dp),
+                tint = Color.Unspecified
+            )
         }
     }
 

@@ -422,7 +422,7 @@ class WaypointActivity : ComponentActivity() {
             updateMapFeatures(style)
         }
 
-        LaunchedEffect(poiToggle) {
+        LaunchedEffect(poiToggle, map?.style) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
@@ -642,7 +642,6 @@ class WaypointActivity : ComponentActivity() {
                 iconImage("poi-icon"),
                 iconSize(waypointSizeScaling),
                 iconAllowOverlap(true),
-                visibility(if (waypointVm.arePoiVisible) Property.VISIBLE else Property.NONE)
             )
         style.addLayer(poiLayer)
 

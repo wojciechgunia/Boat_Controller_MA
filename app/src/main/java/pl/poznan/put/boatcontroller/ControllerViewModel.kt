@@ -29,6 +29,7 @@ import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
+import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
 import java.util.Base64
 
@@ -68,6 +69,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
     val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
+    private val _layersMode = mutableStateOf(MapLayersVisibilityMode.BOTH_VISIBLE)
+    val layersMode: MutableState<MapLayersVisibilityMode> = _layersMode
+
     var currentSpeed by mutableFloatStateOf(0.0f)
         private set
 
@@ -79,8 +83,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     var cameraFeed by mutableStateOf(ByteArray(0))
         private set
-
-    var arePoiVisible by mutableStateOf(false)
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -304,6 +306,15 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveCameraPosition(lat: Double, lng: Double, zoom: Double) {
         _cameraPosition.value = CameraPositionState(lat, lng, zoom)
+    }
+
+    fun toggleMapLayersMode() {
+        _layersMode.value = when (_layersMode.value) {
+            MapLayersVisibilityMode.BOTH_VISIBLE -> MapLayersVisibilityMode.WAYPOINTS
+            MapLayersVisibilityMode.WAYPOINTS -> MapLayersVisibilityMode.POI
+            MapLayersVisibilityMode.POI -> MapLayersVisibilityMode.NONE
+            MapLayersVisibilityMode.NONE -> MapLayersVisibilityMode.BOTH_VISIBLE
+        }
     }
 
     fun updatePoiData(id: Int, name: String, description: String) {
