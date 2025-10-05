@@ -72,6 +72,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private val _layersMode = mutableStateOf(MapLayersVisibilityMode.BOTH_VISIBLE)
     val layersMode: MutableState<MapLayersVisibilityMode> = _layersMode
 
+    private val _externalBatteryLevel = mutableStateOf<Int?>(70)
+    val externalBatteryLevel: MutableState<Int?> = _externalBatteryLevel
+
     var currentSpeed by mutableFloatStateOf(0.0f)
         private set
 

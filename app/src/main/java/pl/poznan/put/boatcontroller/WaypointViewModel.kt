@@ -84,6 +84,9 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
     val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
 
+    private val _externalBatteryLevel = mutableStateOf<Int?>(70)
+    val externalBatteryLevel: MutableState<Int?> = _externalBatteryLevel
+
     fun initSocket() {
         SocketClientManager.setOnMessageReceivedListener { message ->
             handleServerMessage(message)

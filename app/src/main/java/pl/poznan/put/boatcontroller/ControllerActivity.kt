@@ -113,6 +113,7 @@ import org.maplibre.android.style.layers.SymbolLayer
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
 import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
+import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
@@ -754,6 +755,14 @@ class ControllerActivity: ComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
             ) {
+                BatteryIndicator(
+                    level = viewModel.externalBatteryLevel.value ?: 0,
+                    isCharging = true,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                )
+
                 FloatingActionButton(
                     onClick = {
                         val shipPosition = viewModel.shipPosition
@@ -796,8 +805,8 @@ class ControllerActivity: ComponentActivity() {
                     when (viewModel.layersMode.value) {
                         MapLayersVisibilityMode.BOTH_VISIBLE -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_compass), "Waypoints visible")
                         MapLayersVisibilityMode.WAYPOINTS -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_star), "POI visible")
-                        MapLayersVisibilityMode.POI -> Icon(Icons.Default.VisibilityOff, contentDescription = "None visible")
-                        MapLayersVisibilityMode.NONE -> Icon(Icons.Default.Visibility, contentDescription = "Both visible")
+                        MapLayersVisibilityMode.POI -> Icon(Icons.Default.VisibilityOff, tint = Color.White, contentDescription = "None visible")
+                        MapLayersVisibilityMode.NONE -> Icon(Icons.Default.Visibility, tint = Color.White, contentDescription = "Both visible")
                     }
                 }
             }
@@ -1026,6 +1035,7 @@ class ControllerActivity: ComponentActivity() {
         Box {
             Icon(
                 imageVector = Icons.Default.Visibility,
+                tint = Color.White,
                 contentDescription = contentDescription,
                 modifier = Modifier.size(32.dp)
             )

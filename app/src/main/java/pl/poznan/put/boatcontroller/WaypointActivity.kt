@@ -104,6 +104,7 @@ import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.enums.WaypointMode
+import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
@@ -442,6 +443,14 @@ class WaypointActivity : ComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
             ) {
+                BatteryIndicator(
+                    level = waypointVm.externalBatteryLevel.value ?: 0,
+                    isCharging = true,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                )
+
                 FloatingActionButton(
                     onClick = {
                         val shipPosition = waypointVm.shipPosition.value
@@ -474,6 +483,9 @@ class WaypointActivity : ComponentActivity() {
                 FloatingActionButton(
                     onClick = {
                         waypointVm.arePoiVisible = !waypointVm.arePoiVisible
+//                        waypointVm.externalBatteryLevel.value = waypointVm.externalBatteryLevel.value?.minus(
+//                            1
+//                        )
                     },
                     shape = CircleShape,
                     modifier = Modifier
