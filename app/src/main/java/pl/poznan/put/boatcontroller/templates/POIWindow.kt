@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import pl.poznan.put.boatcontroller.R
 import pl.poznan.put.boatcontroller.dataclass.POIObject
+import kotlin.text.Typography.nbsp
 
 @SuppressLint("AutoboxingStateCreation")
 @Composable
@@ -233,8 +234,8 @@ private fun ControlPanel(
         }
         Column {
             Row(Modifier.padding(top = 8.dp)) {
-                Text(text = "Lon: ${"%.5f".format(currentPoi.lon)}", fontSize = 14.sp)
-                Text(text = " | Lat: ${"%.5f".format(currentPoi.lat)}", fontSize = 14.sp)
+                Text(text = "Lon:${nbsp+"%.5f".format(currentPoi.lon)} | ", fontSize = 12.sp)
+                Text(text = "Lat:${nbsp+"%.5f".format(currentPoi.lat)}", fontSize = 12.sp)
             }
             Row(
                 modifier = Modifier
@@ -258,7 +259,7 @@ private fun ControlPanel(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete", color = Color.Red, fontSize = 16.sp)
+                    Text("Delete", color = Color.Red, fontSize = 15.sp)
                 }
             }
             Row(

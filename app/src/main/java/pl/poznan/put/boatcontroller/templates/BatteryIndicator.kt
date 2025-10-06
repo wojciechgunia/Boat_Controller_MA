@@ -39,8 +39,8 @@ fun BatteryIndicator(
     showPercentage: Boolean = true
 ) {
     val color = when {
-        level < 20 -> Color.Red
-        level < 50 -> Color.Yellow
+        level < 11 -> Color.Red
+        level < 41 -> Color.Yellow
         else -> Color.Green
     }
 
@@ -62,7 +62,7 @@ fun BatteryIndicator(
         Box(
             modifier = Modifier
                 .height(20.dp)
-                .width(48.dp)
+                .width(38.dp)
         ) {
             Box(
                 modifier = Modifier
