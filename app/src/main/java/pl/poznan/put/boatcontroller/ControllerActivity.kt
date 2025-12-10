@@ -759,8 +759,8 @@ class ControllerActivity: ComponentActivity() {
                     level = viewModel.externalBatteryLevel.value ?: 0,
                     isCharging = true,
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(16.dp)
+                        .align(Alignment.TopEnd)
+                        .padding(5.dp)
                 )
 
                 FloatingActionButton(
