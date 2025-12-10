@@ -11,7 +11,6 @@ data class HomePosition(
 )
 
 data class ShipSensorsData(
-    val temperature: Double,
-    val humidity: Double,
+    val magnetic: Double,
     val depth: Double,
 )

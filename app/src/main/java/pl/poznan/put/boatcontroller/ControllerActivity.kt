@@ -180,24 +180,23 @@ class ControllerActivity: ComponentActivity() {
     // ===========================  Controller screen ================================================
 
     fun sendEnginePower(viewModel: ControllerViewModel) {
-        val message = "SES:${viewModel.leftEnginePower}:${viewModel.rightEnginePower}"
-        println("Sending via socket: $message")
-        viewModel.sendMessage(message)
+        viewModel.sendSpeed(
+            viewModel.leftEnginePower.toDouble(),
+            viewModel.rightEnginePower.toDouble()
+        )
     }
 
     fun sendSetHome(viewModel: ControllerViewModel) {
         val lat = viewModel.shipPosition.value.lat
         val lon = viewModel.shipPosition.value.lon
-        val message = "SHM:${lat}:${lon}"
         viewModel.updateHomePosition(HomePosition(lat, lon))
-        println("Sending via socket: $message")
-        viewModel.sendMessage(message)
+        // Brak dedykowanej komendy w nowym protokole – używamy akcji GH (Go Home)
+        viewModel.sendAction("GH", "")
     }
 
     fun sendMode(mode: String) {
-        val message = "SCM:${mode}"
-        println("Sending via socket: $message")
-        viewModel.sendMessage(message)
+        // Nowy protokół: SA:{action}:{payload}:{s_num}:SA z action=SM (Set Mode)
+        viewModel.sendAction("SM", mode)
     }
 
     @Composable
@@ -675,7 +674,7 @@ class ControllerActivity: ComponentActivity() {
                     MapLibre.getInstance(context)
                     MapView(context).apply {
                         getMapAsync { mapboxMap ->
-                                val styleJson = """
+                            val styleJson = """
                                 {
                                   "version": 8,
                                   "sources": {
@@ -844,9 +843,8 @@ class ControllerActivity: ComponentActivity() {
         val data = viewModel.sensorsData
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "Temperatura: ${data.temperature}°C\n", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
-                Text(text = "Wilgotność: ${data.humidity}%\n", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
-                Text(text = "Głębokość: ${data.depth}m\n", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
+                Text(text = "Magnetometr: ${data.magnetic}", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
+                Text(text = "Głębokość: ${data.depth} m", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
             }
         }
     }

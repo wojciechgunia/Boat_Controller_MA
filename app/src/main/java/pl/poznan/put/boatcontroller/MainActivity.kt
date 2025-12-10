@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -53,7 +54,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,9 +80,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
-import kotlinx.coroutines.selects.select
 import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
-import pl.poznan.put.boatcontroller.dataclass.ShipListItemDto
 import pl.poznan.put.boatcontroller.dataclass.ShipOption
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
@@ -142,9 +140,6 @@ fun AppNavHost(navController: NavHostController, mainVm: MainViewModel) {
 
 @Composable
 fun HomeContent(navController: NavController, mainVm: MainViewModel) {
-    val isLoggedIn = mainVm.uiState is MainUiState.LoggedIn
-    val selectedMission by SessionManager.selectedMission.collectAsState()
-
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -152,15 +147,26 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
         if(isLandscape()) {
             LazyColumn {
                 item {
-                    Row (
+                    Column(
                         modifier = Modifier.fillMaxWidth().padding(10.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ){
-                        Text(text = "Connection:  ", fontSize = 5.em)
-                        if (isLoggedIn) {
-                            Text(text = "Connected", fontSize = 5.em, color = Color.Green)
-                        } else {
-                            Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(horizontalArrangement = Arrangement.Center) {
+                            Text(text = "REST:  ", fontSize = 5.em)
+                            if (mainVm.isLoggedIn) {
+                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
+                            } else {
+                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.Center) {
+                            Text(text = "Socket:  ", fontSize = 5.em)
+                            if (mainVm.isSocketConnected) {
+                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
+                            } else {
+                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                            }
                         }
                     }
                     Row {
@@ -180,7 +186,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Controller",
                                 R.drawable.bc_controller,
                                 navController,
-                                isLoggedIn,
+                                mainVm.isLoggedIn,
                                 navDest = "controller",
                                 mainVm = mainVm
                             )
@@ -194,7 +200,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "VR Cam",
                                 R.drawable.bc_vr,
                                 navController,
-                                isLoggedIn,
+                                mainVm.isLoggedIn,
                                 navDest = "vr_mode",
                                 mainVm = mainVm
                             )
@@ -202,7 +208,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Waypoint",
                                 R.drawable.bc_waypoint,
                                 navController,
-                                isLoggedIn,
+                                mainVm.isLoggedIn,
                                 navDest = "waypoint",
                                 mainVm = mainVm,
                             )
@@ -216,12 +222,23 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 item {
-                    Row {
-                        Text(text = "Connection:  ", fontSize = 5.em)
-                        if (isLoggedIn) {
-                            Text(text = "Connected", fontSize = 5.em, color = Color.Green)
-                        } else {
-                            Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row {
+                            Text(text = "REST:  ", fontSize = 5.em)
+                            if (mainVm.isLoggedIn) {
+                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
+                            } else {
+                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row {
+                            Text(text = "Socket:  ", fontSize = 5.em)
+                            if (mainVm.isSocketConnected) {
+                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
+                            } else {
+                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
@@ -237,7 +254,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         "Controller",
                         R.drawable.bc_controller,
                         navController,
-                        isLoggedIn && selectedMission?.name != "",
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
                         navDest = "controller",
                         mainVm = mainVm
                     )
@@ -246,19 +263,19 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         "VR Cam",
                         R.drawable.bc_vr,
                         navController,
-                        isLoggedIn && selectedMission?.name != "",
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
                         navDest = "vr_mode",
                         mainVm = mainVm
                     )
 
                     MenuButton(
-                      "Waypoint",
-                      R.drawable.bc_waypoint,
-                      navController,
-                      isLoggedIn && selectedMission?.name != "",
-                      navDest = "waypoint",
-                      mainVm = mainVm,
-                  )
+                        "Waypoint",
+                        R.drawable.bc_waypoint,
+                        navController,
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
+                        navDest = "waypoint",
+                        mainVm = mainVm,
+                    )
                 }
             }
         }
@@ -281,11 +298,15 @@ fun MenuButton(
                 navController.navigate(navDest)
             } else if (navDest != null && navDest == "waypoint") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                    val intent = Intent(context, WaypointActivity::class.java)
+                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
+                    context.startActivity(intent, null)
                 }
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, ControllerActivity::class.java), null)
+                    val intent = Intent(context, ControllerActivity::class.java)
+                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
+                    context.startActivity(intent, null)
                 }
             } else if (navDest != null && navDest == "vr_mode") {
                 if (mainVm != null) {
@@ -321,7 +342,6 @@ fun ConnectionContent(navController: NavController, mainVm: MainViewModel) {
 
 @Composable
 fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
-    val isLoggedIn = mainVm.uiState is MainUiState.LoggedIn
     var showSettings by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -353,15 +373,17 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
         }
         item {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (isLoggedIn) {
+                if (!mainVm.isLoggedIn) {
                     LoginForm(
                         mainVm = mainVm,
+                        onConnect = { mainVm.updateLoggedIn(true); },
                         onShowSettings = { showSettings = true }
                     )
                 } else {
                     MissionForm(
                         mainVm = mainVm,
                         onChangeSelectedMission = { navController.navigate("home") },
+                        onDisconnect = { mainVm.updateLoggedIn(false) }
                     )
                 }
 
@@ -445,8 +467,8 @@ fun ShipSelect(mainVm: MainViewModel) {
                         }
                     },
                     onClick = {
-                        val shipDto = ShipOption(option.name, option.role)
-                        mainVm.onShipSelected(shipDto)
+                        selectedText = "${option.name} (${option.role})"
+                        mainVm.updateSelectedShip(option.name, option.role)
                         expanded = false
                     }
                 )
@@ -458,12 +480,12 @@ fun ShipSelect(mainVm: MainViewModel) {
 @Composable
 fun LoginForm(
     mainVm: MainViewModel,
+    onConnect: () -> Unit,
     onShowSettings: () -> Unit
 ) {
     var usernameError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
-    val selectedMission by SessionManager.selectedMission.collectAsState()
-    val isLoading = mainVm.uiState is MainUiState.Loading
+    var isLoading by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -545,7 +567,17 @@ fun LoginForm(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { mainVm.connectClicked() },
+            onClick = {
+                if (usernameError == null && passwordError == null && mainVm.selectedShip.name != "") {
+                    isLoading = true
+                    Log.d("Connection", "Start")
+                    mainVm.connect()
+                    isLoading = false
+                    if (mainVm.isLoggedIn && !mainVm.error) {
+                        onConnect()
+                    }
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -555,7 +587,7 @@ fun LoginForm(
                 containerColor = Color(0xFF4170A6),
                 contentColor = Color.White
             ),
-            enabled = !isLoading && mainVm.password!="" && mainVm.username!="" && selectedMission?.name!=""
+            enabled = !isLoading && mainVm.password!="" && mainVm.username!="" && mainVm.selectedShip.name!=""
         ) {
             Text(if (isLoading) "Connecting... " else "Connect ",fontSize = 8.em)
             Icon(
@@ -564,15 +596,7 @@ fun LoginForm(
                 modifier = Modifier.size(36.dp))
         }
     }
-    val errorMessage = if (mainVm.uiState is MainUiState.Error) (mainVm.uiState as MainUiState.Error).message else null
-
-    ErrorBubble(
-        visible = errorMessage != null,
-        message = errorMessage ?: "Wystąpił nieznany błąd.", // Używamy wiadomości z obiektu stanu
-        onClose = {
-            mainVm.clearUiError()
-        }
-    )
+    ErrorBubble(visible = mainVm.error, onClose = { mainVm.updateError(false) })
 }
 
 @Composable
@@ -683,9 +707,9 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
                     mainVm.changeServerData()
                 },
                 modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .height(60.dp),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(60.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF4170A6),
                     contentColor = Color.White
@@ -704,14 +728,10 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit) {
+fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDisconnect: () -> Unit) {
     var filter by remember { mutableStateOf("") }
     var selectedMissionLocal by remember { mutableStateOf<MissionListItemDto>(MissionListItemDto(-1,"")) }
     var expanded by remember { mutableStateOf(false) }
-    val selectedShip by SessionManager.selectedShip.collectAsState()
-    val selectedMission by SessionManager.selectedMission.collectAsState()
-    val username = mainVm.username
-    val isCaptain = mainVm.isCaptain
 
     Column(
         modifier = Modifier
@@ -723,6 +743,7 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit) {
         Button(
             onClick = {
                 mainVm.disconnect()
+                onDisconnect()
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -748,14 +769,10 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit) {
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            Text("Welcome ${username}", style = MaterialTheme.typography.headlineMedium)
-
-            val shipName = selectedShip?.name ?: "-"
-            val missionName = selectedMission?.name ?: "-"
-
-            Text("Ship: ${shipName}", style = MaterialTheme.typography.headlineSmall)
-            Text("Role: ${if(isCaptain) "Captain" else "Observer"}", style = MaterialTheme.typography.headlineSmall)
-            Text("Mission: ${missionName}", style = MaterialTheme.typography.headlineSmall)
+            Text("Welcome ${mainVm.username}", style = MaterialTheme.typography.headlineMedium)
+            Text("Ship: ${mainVm.selectedShip.name}", style = MaterialTheme.typography.headlineSmall)
+            Text("Role: ${if(mainVm.isCaptain) "Captain" else "Observer"}", style = MaterialTheme.typography.headlineSmall)
+            Text("Mission: ${if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-"}", style = MaterialTheme.typography.headlineSmall)
         }
         Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider(thickness = 1.dp, color = Color.White)
@@ -812,11 +829,134 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit) {
         Text("Selected: ${ if(!selectedMissionLocal.name.isEmpty()) selectedMissionLocal.name else '-'}", style = MaterialTheme.typography.bodyMedium, modifier=Modifier.fillMaxWidth())
 
         Spacer(modifier = Modifier.height(14.dp))
+        HorizontalDivider(thickness = 1.dp, color = Color.White)
+        Spacer(modifier = Modifier.height(14.dp))
+        
+        // Panel testowy socketu
+        Text("Socket Test Panel", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Status połączenia
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Status: ",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = if(mainVm.isSocketConnected) "✅ Connected" else "❌ Disconnected",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if(mainVm.isSocketConnected) Color.Green else Color.Red
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // Przyciski testowe
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { mainVm.testSocketConnection() },
+                enabled = mainVm.isSocketConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.weight(1f).height(40.dp)
+            ) {
+                Text("Get BI", fontSize = 3.em)
+            }
+            Button(
+                onClick = { mainVm.testSetSpeed(0.5, 0.5) },
+                enabled = mainVm.isSocketConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF2196F3),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.weight(1f).height(40.dp)
+            ) {
+                Text("Test Speed", fontSize = 3.em)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { mainVm.testSetAction("ST", "") },
+                enabled = mainVm.isSocketConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFF9800),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.weight(1f).height(40.dp)
+            ) {
+                Text("Start", fontSize = 3.em)
+            }
+            Button(
+                onClick = { mainVm.testSetAction("SP", "") },
+                enabled = mainVm.isSocketConnected,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF44336),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.weight(1f).height(40.dp)
+            ) {
+                Text("Stop", fontSize = 3.em)
+            }
+        }
+        
+        // Lista ostatnich wiadomości
+        if (mainVm.socketMessages.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Recent Messages:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    mainVm.socketMessages.take(5).forEach { msg ->
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (mainVm.lastSocketResponse.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Last Event:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text(mainVm.lastSocketResponse, style = MaterialTheme.typography.bodySmall, color = Color.White)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         Button(
             onClick = {
-                mainVm.onMissionSelected(selectedMissionLocal)
-                if (selectedMissionLocal.id != -1) {
+                mainVm.updateSelectedMission(selectedMissionLocal)
+                if (mainVm.selectedMission.id != -1) {
                     onChangeSelectedMission()
                 }
             },

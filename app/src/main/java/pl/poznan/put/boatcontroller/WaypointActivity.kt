@@ -134,7 +134,7 @@ class WaypointActivity : ComponentActivity() {
                     override fun handleOnBackPressed() {
                         waypointVm.stopShipSimulation()
                         waypointVm.onSimulationFinished()
-                        waypointVm.sendMessage("SCM:MEN")
+                        waypointVm.sendMode("manual")
                         finish()
                     }
                 })

@@ -1,5 +1,6 @@
 package pl.poznan.put.boatcontroller.socket
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -10,6 +11,9 @@ object SocketRepository {
     private val service = SocketService() // Twój poprawiony serwis z reconnectem
     private val _events = MutableSharedFlow<SocketEvent>(extraBufferCapacity = 50)
     val events = _events.asSharedFlow()
+    
+    // Eksportujemy status połączenia dla UI
+    val connectionState = service.connectionState
 
     private var lastSequenceNumber: Int = -1
     private var isInitialized = false
@@ -24,9 +28,11 @@ object SocketRepository {
             service.incomingRaw.collect { raw ->
                 val event = SocketParser.parse(raw)
                 if (event != null) {
+                    Log.d("SocketRepository", "📨 Parsed event: ${event::class.simpleName}")
                     handleIncomingEvent(event)
+                } else {
+                    Log.w("SocketRepository", "⚠️ Failed to parse: $raw")
                 }
-                // else: ignorujemy śmieci, parser sam loguje błędy
             }
         }
     }
@@ -91,7 +97,9 @@ object SocketRepository {
     }
 
     suspend fun send(command: SocketCommand) {
-        service.send(encodeCommand(command))
+        val encoded = encodeCommand(command)
+        Log.d("SocketRepository", "📤 Sending command: ${command::class.simpleName} -> $encoded")
+        service.send(encoded)
     }
 
     private fun encodeCommand(cmd: SocketCommand): String {

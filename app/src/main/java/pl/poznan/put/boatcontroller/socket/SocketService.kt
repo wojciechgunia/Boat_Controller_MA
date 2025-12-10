@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import android.util.Log
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
@@ -34,6 +35,7 @@ class SocketService {
                     connect(ip, port)
                 } catch (e: Exception) {
                     connectionState.emit(false)
+                    Log.w("SocketService", "⚠️ Connection lost, retrying in 3s...", e)
                     delay(3000)
                 }
             }
@@ -49,12 +51,13 @@ class SocketService {
             reader = BufferedReader(InputStreamReader(socket!!.getInputStream()))
 
             connectionState.emit(true)
-            println("Socket: Connected to $ip:$port")
+            Log.d("SocketService", "✅ Connected to $ip:$port")
 
             // Pętla czytania - blokuje dopóki połączenie jest aktywne
             while (isRunning && socket?.isConnected == true) {
                 val line = reader?.readLine()
                 if (line != null) {
+                    Log.d("SocketService", "📥 RECV: $line")
                     incomingRaw.emit(line)
                 } else {
                     throw IOException("Server closed connection")
@@ -66,15 +69,20 @@ class SocketService {
     }
 
     suspend fun send(msg: String) {
-        if (!isRunning || socket?.isConnected != true) return
+        if (!isRunning || socket?.isConnected != true) {
+            Log.w("SocketService", "❌ Cannot send - not connected: $msg")
+            return
+        }
         writeMutex.withLock {
             try {
                 withContext(Dispatchers.IO) {
                     writer?.write(msg)
                     writer?.write("\n")
                     writer?.flush()
+                    Log.d("SocketService", "📤 SEND: $msg")
                 }
             } catch (e: Exception) {
+                Log.e("SocketService", "❌ Send error: $msg", e)
                 e.printStackTrace()
             }
         }

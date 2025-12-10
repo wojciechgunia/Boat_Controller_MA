@@ -32,9 +32,15 @@ import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.collectLatest
+import pl.poznan.put.boatcontroller.socket.SocketEvent
+import pl.poznan.put.boatcontroller.socket.SocketRepository
+import pl.poznan.put.boatcontroller.socket.SocketCommand
 
 class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
+    private val seq = AtomicInteger(0)
     var missionId by mutableIntStateOf(-1)
         private set
 
@@ -81,7 +87,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     var sonarData by mutableStateOf(ByteArray(0))
         private set
 
-    var sensorsData by mutableStateOf(ShipSensorsData(0.0, 0.0, 0.0))
+    var sensorsData by mutableStateOf(ShipSensorsData(0.0, 0.0))
         private set
 
     var cameraFeed by mutableStateOf(ByteArray(0))
@@ -156,61 +162,55 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun initSocket() {
-        SocketClientManager.setOnMessageReceivedListener { message ->
-            handleServerMessage(message)
-        }
-    }
-
     init {
-        initSocket()
+        observeSocket()
     }
 
-    fun handleServerMessage(message: String) {
-        if (message.trim().startsWith("ALL_UPDATE:")) {
-            val data = message.substringAfter("ALL_UPDATE:").split(",")
-            val latitude = data[0].toDouble()
-            val longitude = data[1].toDouble()
-            val currentSpeed = data[2].toFloat()
-            val sensorData = ShipSensorsData(
-                data[3].toDouble(),
-                data[4].toDouble(),
-                data[5].toDouble())
-            if(data.size > 6) {
-                _homePosition.value = HomePosition(data[6].toDouble(), data[7].toDouble())
+    private fun observeSocket() {
+        viewModelScope.launch {
+            SocketRepository.events.collectLatest { event ->
+                when (event) {
+                    is SocketEvent.PositionActualisation -> {
+                        mapUpdate(event.lat, event.lon, event.speed.toFloat())
+                    }
+                    is SocketEvent.SensorInformation -> {
+                        updateSensorsData(
+                            ShipSensorsData(
+                                magnetic = event.magnetic,
+                                depth = event.depth
+                            )
+                        )
+                    }
+                    is SocketEvent.BoatInformation -> {
+                        // Można zaktualizować _homePosition lub wyświetlić info; na razie tylko log
+                        Log.d("Socket", "Boat info: ${event.name}/${event.captain}/${event.mission}")
+                    }
+                    is SocketEvent.BoatInformationChange -> {
+                        Log.d("Socket", "Boat info change: ${event.name}/${event.captain}/${event.mission}")
+                    }
+                    is SocketEvent.WarningInformation -> {
+                        Log.w("Socket", "Warning: ${event.infoCode}")
+                    }
+                    is SocketEvent.LostInformation -> {
+                        Log.d("Socket", "Lost info ack for sNum=${event.sNum}")
+                    }
+                }
             }
-            mapUpdate(latitude, longitude, currentSpeed)
-            updateSensorsData(sensorData)
-
-        } else if (message.trim().startsWith("MAP_UPDATE:")) {
-            val coordinates = message.substringAfter("MAP_UPDATE:").split(",")
-            val latitude = coordinates[0].toDouble()
-            val longitude = coordinates[1].toDouble()
-            val currentSpeed = coordinates[2].toFloat()
-            mapUpdate(latitude, longitude, currentSpeed)
-        } else if (message.startsWith("SEN_UPDATE:")) {
-            val sensorData = message.substringAfter("SEN_UPDATE:").split(",")
-            currentSpeed = sensorData[3].toFloat()
-            updateSensorsData(ShipSensorsData(
-                sensorData[0].toDouble(),
-                sensorData[1].toDouble(),
-                sensorData[2].toDouble()
-            ))
-        } else if (message.startsWith("SNR_UPDATE:")) {
-            updateSonarData(Base64.getDecoder().decode(message.substringAfter("SNR_UPDATE:").trim()))
-        } else if (message.startsWith("CAM_UPDATE:")) {
-            updateCameraFeed(Base64.getDecoder().decode(message.substringAfter("CAM_UPDATE:").trim()))
-        } else if (message.startsWith("CAM2_UPDATE:")) {
-            currentSpeed = message.substringAfter("CAM2_UPDATE:").toFloat()
-        } else if (message.startsWith("SNR2_UPDATE:")) {
-            val sonarData = message.substringAfter("SNR2_UPDATE:").split(",")
-            updateSensorsData(sensorsData.copy(depth = sonarData[0].toDouble()))
-            currentSpeed = sonarData[1].toFloat()
         }
     }
 
-    fun sendMessage(message: String) {
-        SocketClientManager.sendMessage(message)
+    private fun nextSNum(): Int = seq.incrementAndGet()
+
+    fun sendSpeed(left: Double, right: Double) {
+        viewModelScope.launch {
+            SocketRepository.send(SocketCommand.SetSpeed(left, right, nextSNum()))
+        }
+    }
+
+    fun sendAction(action: String, payload: String = "") {
+        viewModelScope.launch {
+            SocketRepository.send(SocketCommand.SetAction(action, payload, nextSNum()))
+        }
     }
 
     fun getShipFeature(): FeatureCollection {

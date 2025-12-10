@@ -1,3 +1,4 @@
+
 package pl.poznan.put.boatcontroller
 
 import android.app.Application
@@ -17,6 +18,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -35,6 +37,10 @@ import pl.poznan.put.boatcontroller.dataclass.WaypointUpdateRequest
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
+import java.util.concurrent.atomic.AtomicInteger
+import pl.poznan.put.boatcontroller.socket.SocketRepository
+import pl.poznan.put.boatcontroller.socket.SocketEvent
+import pl.poznan.put.boatcontroller.socket.SocketCommand
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
@@ -87,19 +93,36 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private val _externalBatteryLevel = mutableStateOf<Int?>(100)
     val externalBatteryLevel: MutableState<Int?> = _externalBatteryLevel
 
-    fun initSocket() {
-        SocketClientManager.setOnMessageReceivedListener { message ->
-            handleServerMessage(message)
-        }
-    }
+    private val seq = AtomicInteger(0)
 
     init {
-        initSocket()
-        SocketClientManager.setOnLoginStatusChangedListener { loggedIn ->
-            if (!loggedIn) {
-                stopShipSimulation()
-                onSimulationFinished()
-                _shouldFinish.postValue(true)
+        observeSocket()
+    }
+
+    private fun observeSocket() {
+        viewModelScope.launch {
+            SocketRepository.events.collectLatest { event ->
+                when (event) {
+                    is SocketEvent.PositionActualisation -> {
+                        _shipPosition.value = ShipPosition(event.lat, event.lon)
+                    }
+                    is SocketEvent.SensorInformation -> {
+                        // Brak dedykowanego modelu czujników w tym ViewModelu – na razie log
+                        Log.d("Socket", "Sensors mag=${event.magnetic} depth=${event.depth}")
+                    }
+                    is SocketEvent.BoatInformationChange -> {
+                        Log.d("Socket", "Boat info change: ${event.name}/${event.captain}/${event.mission}")
+                    }
+                    is SocketEvent.BoatInformation -> {
+                        Log.d("Socket", "Boat info: ${event.name}/${event.captain}/${event.mission}")
+                    }
+                    is SocketEvent.WarningInformation -> {
+                        Log.w("Socket", "Warning: ${event.infoCode}")
+                    }
+                    is SocketEvent.LostInformation -> {
+                        Log.d("Socket", "Lost info ack for sNum=${event.sNum}")
+                    }
+                }
             }
         }
     }
@@ -144,28 +167,16 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun handleServerMessage(message: String) {
-        //println(message)
-        if (message.trim().startsWith("SSP:")) {
-            val data = message.substringAfter("SSP:").split(":")
-            val lat = data[0].toDouble()
-            val lon = data[1].toDouble()
-            _shipPosition.value = ShipPosition(lat, lon)
-        }
+    private fun nextSNum(): Int = seq.incrementAndGet()
 
-        if (message.trim().startsWith("WCW:")) {
-            val data = message.substringAfter("WCW:").split(":")
-            val id = data[0].toInt()
-
-            val index = _waypointPositions.indexOfFirst { it.no == id }
-            if (index != -1) {
-                _waypointPositions[index] = _waypointPositions[index].copy(isCompleted = true)
-            }
+    private fun sendAction(action: String, payload: String = "") {
+        viewModelScope.launch {
+            SocketRepository.send(SocketCommand.SetAction(action, payload, nextSNum()))
         }
+    }
 
-        if (message.trim().startsWith("WFW")) {
-            onSimulationFinished()
-        }
+    fun sendMode(mode: String) {
+        sendAction("SM", mode)
     }
 
     fun startShipSimulation() {
@@ -174,9 +185,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
         shipMovingJob = viewModelScope.launch {
             try {
-                val message = "WST"
-                SocketClientManager.sendMessage(message)
-                println("Sending via socket: $message")
+                sendAction("ST", "")
                 _isShipMoving.value = true
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -190,16 +199,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         shipMovingJob?.cancel()
         shipMovingJob = null
         _isShipMoving.value = false
-        val message = "WSP"
-        SocketClientManager.sendMessage(message)
-        println("Sending via socket: $message")
+        sendAction("SP", "")
     }
 
     fun goToHome() {
-        val message = "WGH"
         toggleShipDirection()
-        SocketClientManager.sendMessage(message)
-        println("Sending via socket: $message")
+        sendAction("GH", "")
     }
 
     fun toggleShipDirection() {
@@ -265,9 +270,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
                 val waypoint = WaypointObject(no, lon, lat)
                 _waypointPositions.add(waypoint)
-                val message = "WAP:${no}:${lat}:${lon}"
-                SocketClientManager.sendMessage(message)
-                println("Sending via socket: $message")
+                sendAction("SW", "${lon};${lat}")
             } catch (e: Exception) {
                 Log.e("API", "Błąd dodawania waypointu", e)
             }
@@ -301,9 +304,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     _waypointPositions.clear()
                     _waypointPositions.addAll(waypoints.map { it.toDomain() })
 
-                    val message = "WDP:${no}"
-                    SocketClientManager.sendMessage(message)
-                    println("Sending via socket: $message")
+                    // Brak dedykowanej komendy usunięcia w nowym protokole – pomijamy wysyłkę.
                 } else {
                     Log.w("API", "Nie znaleziono waypointu o numerze $no")
                 }
@@ -335,9 +336,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     if (index != -1) {
                         _waypointPositions[index] = _waypointPositions[index].copy(lon = newLon, lat = newLat)
                     }
-                    val message = "WUP:${no}:${newLat}:${newLon}"
-                    SocketClientManager.sendMessage(message)
-                    println("Sending via socket: $message")
+                    // Aktualizujemy pozycję poprzez akcję SW (ustaw waypoint)
+                    sendAction("SW", "${newLon};${newLat}")
                 } else {
                     Log.w("API", "Nie znaleziono waypointu o numerze $no")
                 }
@@ -451,10 +451,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         _cameraPosition.value = CameraPositionState(lat, lng, zoom)
     }
 
-    fun sendMessage(message: String) {
-        SocketClientManager.sendMessage(message)
-    }
-
     fun updateMissionId(missionId: Int) {
         this.missionId = missionId
         initModel()
@@ -480,4 +476,3 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
-
