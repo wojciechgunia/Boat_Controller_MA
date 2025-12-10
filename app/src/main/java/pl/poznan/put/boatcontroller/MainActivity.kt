@@ -53,7 +53,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,9 +79,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
-import kotlinx.coroutines.selects.select
 import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
-import pl.poznan.put.boatcontroller.dataclass.ShipListItemDto
 import pl.poznan.put.boatcontroller.dataclass.ShipOption
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
@@ -142,9 +139,6 @@ fun AppNavHost(navController: NavHostController, mainVm: MainViewModel) {
 
 @Composable
 fun HomeContent(navController: NavController, mainVm: MainViewModel) {
-    val isLoggedIn = mainVm.uiState is MainUiState.LoggedIn
-    val selectedMission by SessionManager.selectedMission.collectAsState()
-
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -157,7 +151,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         horizontalArrangement = Arrangement.Center
                     ){
                         Text(text = "Connection:  ", fontSize = 5.em)
-                        if (isLoggedIn) {
+                        if (mainVm.isLoggedIn) {
                             Text(text = "Connected", fontSize = 5.em, color = Color.Green)
                         } else {
                             Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
@@ -180,7 +174,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Controller",
                                 R.drawable.bc_controller,
                                 navController,
-                                isLoggedIn,
+                                mainVm.isLoggedIn,
                                 navDest = "controller",
                                 mainVm = mainVm
                             )
@@ -194,7 +188,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "VR Cam",
                                 R.drawable.bc_vr,
                                 navController,
-                                isLoggedIn,
+                                mainVm.isLoggedIn,
                                 navDest = "vr_mode",
                                 mainVm = mainVm
                             )
@@ -202,7 +196,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                                 "Waypoint",
                                 R.drawable.bc_waypoint,
                                 navController,
-                                isLoggedIn,
+                                mainVm.isLoggedIn,
                                 navDest = "waypoint",
                                 mainVm = mainVm,
                             )
@@ -218,7 +212,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                 item {
                     Row {
                         Text(text = "Connection:  ", fontSize = 5.em)
-                        if (isLoggedIn) {
+                        if (mainVm.isLoggedIn) {
                             Text(text = "Connected", fontSize = 5.em, color = Color.Green)
                         } else {
                             Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
@@ -237,7 +231,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         "Controller",
                         R.drawable.bc_controller,
                         navController,
-                        isLoggedIn && selectedMission?.name != "",
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
                         navDest = "controller",
                         mainVm = mainVm
                     )
@@ -246,7 +240,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                         "VR Cam",
                         R.drawable.bc_vr,
                         navController,
-                        isLoggedIn && selectedMission?.name != "",
+                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
                         navDest = "vr_mode",
                         mainVm = mainVm
                     )
@@ -255,7 +249,7 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                       "Waypoint",
                       R.drawable.bc_waypoint,
                       navController,
-                      isLoggedIn && selectedMission?.name != "",
+                      mainVm.isLoggedIn && mainVm.selectedMission.name != "",
                       navDest = "waypoint",
                       mainVm = mainVm,
                   )
@@ -281,11 +275,15 @@ fun MenuButton(
                 navController.navigate(navDest)
             } else if (navDest != null && navDest == "waypoint") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, WaypointActivity::class.java), null)
+                    val intent = Intent(context, WaypointActivity::class.java)
+                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
+                    context.startActivity(intent, null)
                 }
             } else if (navDest != null && navDest == "controller") {
                 if (mainVm != null) {
-                    context.startActivity(Intent(context, ControllerActivity::class.java), null)
+                    val intent = Intent(context, ControllerActivity::class.java)
+                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
+                    context.startActivity(intent, null)
                 }
             } else if (navDest != null && navDest == "vr_mode") {
                 if (mainVm != null) {
@@ -321,7 +319,6 @@ fun ConnectionContent(navController: NavController, mainVm: MainViewModel) {
 
 @Composable
 fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
-    val isLoggedIn = mainVm.uiState is MainUiState.LoggedIn
     var showSettings by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -353,15 +350,17 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
         }
         item {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (isLoggedIn) {
+                if (!mainVm.isLoggedIn) {
                     LoginForm(
                         mainVm = mainVm,
+                        onConnect = { mainVm.updateLoggedIn(true); },
                         onShowSettings = { showSettings = true }
                     )
                 } else {
                     MissionForm(
                         mainVm = mainVm,
                         onChangeSelectedMission = { navController.navigate("home") },
+                        onDisconnect = { mainVm.updateLoggedIn(false) }
                     )
                 }
 
@@ -445,8 +444,8 @@ fun ShipSelect(mainVm: MainViewModel) {
                         }
                     },
                     onClick = {
-                        val shipDto = ShipOption(option.name, option.role)
-                        mainVm.onShipSelected(shipDto)
+                        selectedText = "${option.name} (${option.role})"
+                        mainVm.updateSelectedShip(option.name, option.role)
                         expanded = false
                     }
                 )
@@ -458,13 +457,12 @@ fun ShipSelect(mainVm: MainViewModel) {
 @Composable
 fun LoginForm(
     mainVm: MainViewModel,
+    onConnect: () -> Unit,
     onShowSettings: () -> Unit
 ) {
     var usernameError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
-    val isLoggedIn = mainVm.uiState is MainUiState.LoggedIn
-    val selectedMission by SessionManager.selectedMission.collectAsState()
-    val isLoading = mainVm.uiState is MainUiState.Loading
+    var isLoading by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -546,7 +544,17 @@ fun LoginForm(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { mainVm.connectClicked() },
+            onClick = {
+                if (usernameError == null && passwordError == null && mainVm.selectedShip.name != "") {
+                    isLoading = true
+                    Log.d("Connection", "Start")
+                    mainVm.connect()
+                    isLoading = false
+                    if (mainVm.isLoggedIn && !mainVm.error) {
+                        onConnect()
+                    }
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -556,7 +564,7 @@ fun LoginForm(
                 containerColor = Color(0xFF4170A6),
                 contentColor = Color.White
             ),
-            enabled = !isLoading && mainVm.password!="" && mainVm.username!="" && selectedMission?.name!=""
+            enabled = !isLoading && mainVm.password!="" && mainVm.username!="" && mainVm.selectedShip.name!=""
         ) {
             Text(if (isLoading) "Connecting... " else "Connect ",fontSize = 8.em)
             Icon(
@@ -565,7 +573,7 @@ fun LoginForm(
                 modifier = Modifier.size(36.dp))
         }
     }
-    ErrorBubble(visible = mainVm.uiState is MainUiState.Error, onClose = { mainVm.updateError(false) })
+    ErrorBubble(visible = mainVm.error, onClose = { mainVm.updateError(false) })
 }
 
 @Composable
@@ -697,7 +705,7 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit) {
+fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDisconnect: () -> Unit) {
     var filter by remember { mutableStateOf("") }
     var selectedMissionLocal by remember { mutableStateOf<MissionListItemDto>(MissionListItemDto(-1,"")) }
     var expanded by remember { mutableStateOf(false) }

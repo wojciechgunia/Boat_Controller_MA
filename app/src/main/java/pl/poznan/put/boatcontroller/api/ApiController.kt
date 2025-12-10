@@ -87,6 +87,7 @@ interface ApiService {
         @Path("mission_id") missionId: Int
     ): Response<Unit>
 
+
     // Waypoints endpoints
     @POST("waypoints")
     suspend fun createWaypoint(
