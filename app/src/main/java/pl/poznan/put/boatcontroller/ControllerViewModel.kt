@@ -40,6 +40,7 @@ import pl.poznan.put.boatcontroller.socket.SocketCommand
 
 class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
+    private val repo = Repository(app.applicationContext)
     private val seq = AtomicInteger(0)
     var missionId by mutableIntStateOf(-1)
         private set
@@ -164,6 +165,22 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         observeSocket()
+        loadSavedMission()
+    }
+    
+    private fun loadSavedMission() {
+        viewModelScope.launch {
+            try {
+                repo.get().collect { userData ->
+                    if (userData.selectedMissionId != -1 && missionId == -1) {
+                        missionId = userData.selectedMissionId
+                        initModel()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ControllerViewModel", "Error loading saved mission", e)
+            }
+        }
     }
 
     private fun observeSocket() {

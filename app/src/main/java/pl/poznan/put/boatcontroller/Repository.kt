@@ -37,6 +37,14 @@ class Repository(context: Context): UserDataDao {
         dao.editRemember(isRemembered)
     }
 
+    override suspend fun editSelectedMission(missionId: Int, missionName: String) = withContext(Dispatchers.IO) {
+        dao.editSelectedMission(missionId, missionName)
+    }
+
+    override suspend fun editSelectedShip(shipName: String, shipRole: String) = withContext(Dispatchers.IO) {
+        dao.editSelectedShip(shipName, shipRole)
+    }
+
     override suspend fun getCount(): Int {
         return withContext(Dispatchers.IO) {
             dao.getCount()

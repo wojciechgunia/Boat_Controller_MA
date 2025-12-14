@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.AuthClient
@@ -95,8 +96,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             SocketRepository.events.collect { event ->
                 val eventStr = when (event) {
-                    is SocketEvent.BoatInformation -> "BI: ${event.name}/${event.captain}/${event.mission}"
-                    is SocketEvent.BoatInformationChange -> "BIC: ${event.name}/${event.captain}/${event.mission}"
+                    is SocketEvent.BoatInformation -> {
+                        // Dodaj statek do listy jeśli jeszcze nie istnieje
+                        val existingShip = ships.find { it.name == event.name }
+                        if (existingShip == null) {
+                            // Tworzymy nowy statek z informacji z eventu
+                            // Uwaga: nie mamy pełnych informacji (id, connections), więc używamy wartości domyślnych
+                            val newShip = ShipListItemDto(
+                                id = ships.size + 1, // Tymczasowe ID
+                                name = event.name,
+                                connections = 0, // Nie wiemy ile połączeń, domyślnie 0
+                                captain = event.captain,
+                                mission = event.mission
+                            )
+                            ships = ships + newShip
+                        }
+                        // Przywróć zapisany statek jeśli został zapisany i jeszcze nie został ustawiony
+                        if (selectedShip.id == -1 || selectedShip.name.isEmpty()) {
+                            val userData = repo.get().first()
+                            if (userData.selectedShipName.isNotEmpty() && userData.selectedShipName != "Demo") {
+                                val savedShip = ships.find { it.name == userData.selectedShipName }
+                                if (savedShip != null) {
+                                    val role = userData.selectedShipRole
+                                    isCaptain = role == "Captain"
+                                    selectedShip = savedShip
+                                }
+                            }
+                        }
+                        "BI: ${event.name}/${event.captain}/${event.mission}"
+                    }
+                    is SocketEvent.BoatInformationChange -> {
+                        // Aktualizuj informacje o statku jeśli istnieje
+                        val existingShipIndex = ships.indexOfFirst { it.name == event.name }
+                        if (existingShipIndex != -1) {
+                            val existingShip = ships[existingShipIndex]
+                            val updatedShip = existingShip.copy(
+                                captain = event.captain,
+                                mission = event.mission
+                            )
+                            ships = ships.toMutableList().apply {
+                                this[existingShipIndex] = updatedShip
+                            }
+                        }
+                        "BIC: ${event.name}/${event.captain}/${event.mission}"
+                    }
                     is SocketEvent.PositionActualisation -> "PA: ${event.lat},${event.lon} speed=${event.speed} sNum=${event.sNum}"
                     is SocketEvent.SensorInformation -> "SI: mag=${event.magnetic} depth=${event.depth}"
                     is SocketEvent.WarningInformation -> "WI: ${event.infoCode}"
@@ -107,9 +150,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+    
+    private fun restoreSelectedShip() {
+        viewModelScope.launch {
+            try {
+                repo.get().collect { userData ->
+                    if (userData.selectedShipName.isNotEmpty() && (selectedShip.id == -1 || selectedShip.name.isEmpty())) {
+                        if (userData.selectedShipName == "Demo") {
+                            val role = userData.selectedShipRole
+                            isCaptain = role == "Captain"
+                            selectedShip = ShipListItemDto(-2, "Demo", 1, username, selectedMission.name)
+                        } else {
+                            val savedShip = ships.find { it.name == userData.selectedShipName }
+                            if (savedShip != null) {
+                                val role = userData.selectedShipRole
+                                isCaptain = role == "Captain"
+                                selectedShip = savedShip
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error restoring selected ship", e)
+            }
+        }
+    }
 
     private fun insertDatabase() {
-        val userData = UserData(1, "", "", "10.0.2.2", "8000", false)
+        val userData = UserData(1, "", "", "10.0.2.2", "8000", false, -1, "", "", "")
         CoroutineScope(viewModelScope.coroutineContext).launch {
             if (repo.getCount() == 0) {
                 repo.insert(userData)
@@ -133,6 +201,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     password = userData.password
                     isRemembered = true
                 }
+                // Ładowanie zapisanej misji
+                if (userData.selectedMissionId != -1 && userData.selectedMissionName.isNotEmpty()) {
+                    selectedMission = MissionListItemDto(userData.selectedMissionId, userData.selectedMissionName)
+                }
+                // Ładowanie zapisanego statku - tylko jeśli to Demo, bo lista statków może być jeszcze pusta
+                if (userData.selectedShipName.isNotEmpty() && userData.selectedShipName == "Demo") {
+                    val role = userData.selectedShipRole
+                    isCaptain = role == "Captain"
+                    selectedShip = ShipListItemDto(-2, "Demo", 1, username, selectedMission.name)
+                }
+                // Inne statki zostaną przywrócone w restoreSelectedShip() po załadowaniu listy statków
             }
         }
     }
@@ -181,6 +260,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selectedMission = value
         if (isLoggedIn && value.id != -1) {
             sendSetMission(value.name)
+            // Zapisz wybraną misję do bazy danych
+            CoroutineScope(viewModelScope.coroutineContext).launch {
+                repo.editSelectedMission(value.id, value.name)
+            }
         }
     }
 
@@ -192,6 +275,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             if (!error && isLoggedIn) {
                 startSocketConnection()
+                // Przywróć zapisany statek Demo jeśli został zapisany
+                // Inne statki zostaną przywrócone w observeSocketEvents() po otrzymaniu BoatInformation
+                restoreSelectedShip()
             } else {
                 // W razie niepowodzenia upewniamy się, że socket jest zatrzymany
                 SocketRepository.stop()
@@ -203,6 +289,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         isLoggedIn = false
         selectedShip = ShipListItemDto(-1, "", 0, "", "")
         selectedMission = MissionListItemDto(-1, "")
+        // Wyczyść zapisane wartości w bazie danych
+        CoroutineScope(viewModelScope.coroutineContext).launch {
+            repo.editSelectedMission(-1, "")
+            repo.editSelectedShip("", "")
+        }
         SocketRepository.stop()
     }
 
@@ -230,6 +321,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val response = api.getMissions()
             if(response.isSuccessful) {
                 missions = response.body()!!
+                // Po załadowaniu misji, przywróć zapisaną misję jeśli istnieje
+                if (selectedMission.id != -1) {
+                    val savedMission = missions.find { it.id == selectedMission.id }
+                    if (savedMission != null) {
+                        selectedMission = savedMission
+                    } else {
+                        // Jeśli zapisana misja nie istnieje już, zresetuj wybór
+                        selectedMission = MissionListItemDto(-1, "")
+                        CoroutineScope(viewModelScope.coroutineContext).launch {
+                            repo.editSelectedMission(-1, "")
+                        }
+                    }
+                }
             } else {
                 error = true
             }
@@ -244,16 +348,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
 
-    fun createMission(name: String) {
-        viewModelScope.launch {
-            try {
-                ApiClient.setBaseUrl("http://${serverIp}:${serverPort}/")
-                val api = ApiClient.create(getApplication())
-                var mission = api.createMission(MissionCreateRequest(name))
-                missions = (missions + mission) as List<MissionListItemDto>
-            } catch (e: Exception) {
-                Log.e("API", "Missions create error", e)
+    suspend fun createMission(name: String): MissionListItemDto? {
+        return try {
+            ApiClient.setBaseUrl("http://${serverIp}:${serverPort}/")
+            val api = ApiClient.create(getApplication())
+            val response = api.createMission(MissionCreateRequest(name))
+            if (response.isSuccessful) {
+                // Odświeżamy listę misji, aby pobrać nowo utworzoną misję z ID
+                val missionsResponse = api.getMissions()
+                if (missionsResponse.isSuccessful) {
+                    missions = missionsResponse.body()!!
+                    // Zwracamy nowo utworzoną misję
+                    missions.find { it.name == name }
+                } else {
+                    null
+                }
+            } else {
+                null
             }
+        } catch (e: Exception) {
+            Log.e("API", "Missions create error", e)
+            null
         }
     }
 
@@ -263,6 +378,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ShipListItemDto(-2, "Demo", 1, username, selectedMission.name)
         else
             ships.find { it.name == name }!!
+        // Zapisz wybrany statek do bazy danych
+        CoroutineScope(viewModelScope.coroutineContext).launch {
+            repo.editSelectedShip(name, role)
+        }
     }
 
     private fun startSocketConnection() {

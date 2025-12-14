@@ -44,6 +44,7 @@ import pl.poznan.put.boatcontroller.socket.SocketCommand
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
+    private val repo = Repository(app.applicationContext)
     var missionId by mutableIntStateOf(-1)
         private set
 
@@ -97,6 +98,22 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         observeSocket()
+        loadSavedMission()
+    }
+    
+    private fun loadSavedMission() {
+        viewModelScope.launch {
+            try {
+                repo.get().collect { userData ->
+                    if (userData.selectedMissionId != -1 && missionId == -1) {
+                        missionId = userData.selectedMissionId
+                        initModel()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("WaypointViewModel", "Error loading saved mission", e)
+            }
+        }
     }
 
     private fun observeSocket() {

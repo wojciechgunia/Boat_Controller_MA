@@ -264,17 +264,9 @@ fun MenuButton(
             if (navDest != null && navDest == "connection") {
                 navController.navigate(navDest)
             } else if (navDest != null && navDest == "waypoint") {
-                if (mainVm != null) {
-                    val intent = Intent(context, WaypointActivity::class.java)
-                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
-                    context.startActivity(intent, null)
-                }
+                context.startActivity(Intent(context, WaypointActivity::class.java), null)
             } else if (navDest != null && navDest == "controller") {
-                if (mainVm != null) {
-                    val intent = Intent(context, ControllerActivity::class.java)
-                    intent.putExtra("selectedMission", mainVm.selectedMission.id)
-                    context.startActivity(intent, null)
-                }
+                context.startActivity(Intent(context, ControllerActivity::class.java), null)
             } else if (navDest != null && navDest == "vr_mode") {
                 if (mainVm != null) {
                     context.startActivity(Intent(context, VRActivity::class.java), null)
@@ -370,6 +362,14 @@ fun ShipSelect(mainVm: MainViewModel) {
     var expanded by remember { mutableStateOf(false) }
     var selectedText by remember { mutableStateOf("") }
     var ships = emptyList<ShipOption>()
+    
+    // Przywróć zapisany wybór statku
+    LaunchedEffect(mainVm.selectedShip.name) {
+        if (mainVm.selectedShip.name.isNotEmpty()) {
+            val role = if (mainVm.isCaptain) "Captain" else "Observer"
+            selectedText = "${mainVm.selectedShip.name} ($role)"
+        }
+    }
     if(mainVm.ships.isNotEmpty()) {
         ships = (mainVm.ships.map { ship ->
             val role = if (ship.connections == 0) "Captain" else "Observer"
@@ -699,6 +699,16 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
     var filter by remember { mutableStateOf("") }
     var selectedMissionLocal by remember { mutableStateOf<MissionListItemDto>(MissionListItemDto(-1,"")) }
     var expanded by remember { mutableStateOf(false) }
+    var isCreatingMission by remember { mutableStateOf(false) }
+    var missionToCreate by remember { mutableStateOf<String?>(null) }
+    
+    // Przywróć zapisaną misję
+    LaunchedEffect(mainVm.selectedMission.id) {
+        if (mainVm.selectedMission.id != -1 && selectedMissionLocal.id == -1) {
+            selectedMissionLocal = mainVm.selectedMission
+            filter = mainVm.selectedMission.name
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -781,10 +791,14 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
             ) {
                 if (filter.isNotBlank() && mainVm.missions.none { it.name.equals(filter, ignoreCase = true) }) {
                     DropdownMenuItem(
-                        text = { Text("+ Add \"$filter\"") },
+                        text = { Text(if (isCreatingMission) "Creating \"$filter\"..." else "+ Add \"$filter\"") },
                         onClick = {
-                            mainVm.createMission(filter)
-                        }
+                            if (!isCreatingMission) {
+                                missionToCreate = filter
+                                isCreatingMission = true
+                            }
+                        },
+                        enabled = !isCreatingMission
                     )
                 }
 
@@ -800,6 +814,30 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
                             }
                         )
                     }
+            }
+        }
+
+        // Obsługa tworzenia misji
+        LaunchedEffect(missionToCreate) {
+            missionToCreate?.let { missionName ->
+                try {
+                    val newMission = mainVm.createMission(missionName)
+                    if (newMission != null && newMission.id != -1) {
+                        // Czekamy chwilę, aby upewnić się, że lista misji została zaktualizowana
+                        kotlinx.coroutines.delay(100)
+                        selectedMissionLocal = newMission
+                        filter = newMission.name
+                        expanded = false
+                    } else {
+                        // Jeśli misja nie została utworzona, resetujemy stan
+                        isCreatingMission = false
+                    }
+                } catch (e: Exception) {
+                    // W przypadku błędu resetujemy stan
+                    isCreatingMission = false
+                } finally {
+                    missionToCreate = null
+                }
             }
         }
 

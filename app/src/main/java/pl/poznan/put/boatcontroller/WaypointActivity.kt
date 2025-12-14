@@ -116,9 +116,6 @@ class WaypointActivity : ComponentActivity() {
     val cameraZoomAnimationTime = 2
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val intent = getIntent()
-        val selectedMission = intent.getIntExtra("selectedMission", -1)
-        waypointVm.updateMissionId(selectedMission)
         setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
         setContent {

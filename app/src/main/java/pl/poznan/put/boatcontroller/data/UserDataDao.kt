@@ -25,6 +25,12 @@ interface UserDataDao {
     @Query("UPDATE userData SET isRemembered = :isRemembered WHERE uid = 1")
     suspend fun editRemember(isRemembered: Boolean)
 
+    @Query("UPDATE userData SET selectedMissionId = :missionId, selectedMissionName = :missionName WHERE uid = 1")
+    suspend fun editSelectedMission(missionId: Int, missionName: String)
+
+    @Query("UPDATE userData SET selectedShipName = :shipName, selectedShipRole = :shipRole WHERE uid = 1")
+    suspend fun editSelectedShip(shipName: String, shipRole: String)
+
     @Query("SELECT COUNT(*) FROM userData WHERE uid = 1")
     suspend fun getCount(): Int
 }

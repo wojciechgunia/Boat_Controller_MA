@@ -10,4 +10,8 @@ data class UserData(
     val password: String,
     val ipAddress: String,
     val port: String,
-    val isRemembered: Boolean = false)
+    val isRemembered: Boolean = false,
+    val selectedMissionId: Int = -1,
+    val selectedMissionName: String = "",
+    val selectedShipName: String = "",
+    val selectedShipRole: String = "")
