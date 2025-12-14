@@ -8,7 +8,6 @@ import android.graphics.Canvas
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.core.animateDpAsState
@@ -21,12 +20,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -124,21 +126,6 @@ class WaypointActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val colorScheme = MaterialTheme.colorScheme
 
-                waypointVm.shouldFinish.observe(this) { shouldFinish ->
-                    if (shouldFinish == true) {
-                        finish()
-                    }
-                }
-
-                onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-                    override fun handleOnBackPressed() {
-                        waypointVm.stopShipSimulation()
-                        waypointVm.onSimulationFinished()
-                        waypointVm.sendMode("manual")
-                        finish()
-                    }
-                })
-
                 MapLibre.getInstance(
                     applicationContext
                 )
@@ -177,7 +164,7 @@ class WaypointActivity : ComponentActivity() {
         val screenHeight = LocalWindowInfo.current.containerSize.height
         val screenHeightDp = with(density) { screenHeight.toDp() }
 
-        val toolbarWidth = screenWidthDp * 0.15f
+        val toolbarWidth = screenWidthDp * 0.2f
         val arrowBoxWidth = screenWidthDp * 0.05f
         val arrowBoxHeight = screenHeightDp * 0.2f
         val arrowBoxOffset =
@@ -209,7 +196,9 @@ class WaypointActivity : ComponentActivity() {
             ) {
                 if (waypointVm.isToolbarOpened) {
                     Column(
-                        modifier = Modifier.padding(top = 16.dp)
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .displayCutoutPadding()
                     ) {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -259,7 +248,7 @@ class WaypointActivity : ComponentActivity() {
                                 waypointMode = WaypointMode.SHIP_DEFAULT_MOVE,
                                 onClick = {
                                     waypointVm.toggleWaypointEditMode(WaypointMode.SHIP_DEFAULT_MOVE)
-                                    waypointVm.toggleSimulation()
+//                                    waypointVm.toggleSimulation()
                                 },
                             )
                             IconWithEffectButton(
@@ -267,11 +256,11 @@ class WaypointActivity : ComponentActivity() {
                                 waypointMode = WaypointMode.SHIP_REVERSE_MOVE,
                                 onClick = {
                                     waypointVm.goToHome()
-                                    waypointVm.stopShipSimulation()
+//                                    waypointVm.stopShipSimulation()
 
                                     CoroutineScope(Dispatchers.Main).launch {
                                         delay(300)
-                                        waypointVm.startShipSimulation()
+//                                        waypointVm.startShipSimulation()
                                     }
                                 },
                                 isEnabled = waypointVm.currentShipDirection.value == ShipDirection.DEFAULT
@@ -436,12 +425,11 @@ class WaypointActivity : ComponentActivity() {
             MapTab(
                 waypointVm = waypointVm,
             )
-
             SlidingToolbar(waypointVm)
-
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .systemBarsPadding()
             ) {
                 BatteryIndicator(
                     level = waypointVm.externalBatteryLevel.value ?: 0,
@@ -507,9 +495,20 @@ class WaypointActivity : ComponentActivity() {
             }
         }
 
-        FullScreenPopup(waypointVm.openPOIDialog, { waypointVm.openPOIDialog = false }, waypointVm.poiId, waypointVm.poiPositions, { id: Int, name: String -> waypointVm.updatePoiData(id, name, waypointVm.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> waypointVm.updatePoiData(id, waypointVm.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> waypointVm.deletePoi(id)
-            waypointVm.openPOIDialog = false
-        })
+        if (waypointVm.openPOIDialog) {
+            FullScreenPopup(
+                isOpen = true,
+                onClose = { waypointVm.openPOIDialog = false },
+                poiId = waypointVm.poiId,
+                poiList = waypointVm.poiPositions,
+                onSaveName = { id, name -> waypointVm.updatePoiData(id, name, waypointVm.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) },
+                onSaveDescription = { id, desc -> waypointVm.updatePoiData(id, waypointVm.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), desc) },
+                onDelete = { id ->
+                    waypointVm.deletePoi(id)
+                    waypointVm.openPOIDialog = false
+                }
+            )
+        }
     }
 
     @Composable

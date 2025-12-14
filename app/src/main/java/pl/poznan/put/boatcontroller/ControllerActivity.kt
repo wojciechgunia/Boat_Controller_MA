@@ -255,7 +255,7 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun EngineControlScreen(viewModel: ControllerViewModel) {
-        val tabs = listOf("Mapa", "Sonar", "Czujniki", "Kamera")
+        val tabs = listOf("Map", "Sonar", "Sensors", "Camera")
         val isTablet = isTablet(this)
         var isSyncOn by remember { mutableStateOf(false) }
 

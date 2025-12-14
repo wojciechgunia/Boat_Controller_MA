@@ -179,29 +179,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         sendAction("SM", mode)
     }
 
-    fun startShipSimulation() {
-        val waypoints = waypointPositions.sortedBy { it.no }
-        if (waypoints.isEmpty()) return
-
-        shipMovingJob = viewModelScope.launch {
-            try {
-                sendAction("ST", "")
-                _isShipMoving.value = true
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _isShipMoving.value = false
-                shipMovingJob = null
-            }
-        }
-    }
-
-    fun stopShipSimulation() {
-        shipMovingJob?.cancel()
-        shipMovingJob = null
-        _isShipMoving.value = false
-        sendAction("SP", "")
-    }
-
     fun goToHome() {
         toggleShipDirection()
         sendAction("GH", "")
@@ -212,34 +189,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             ShipDirection.DEFAULT -> ShipDirection.REVERSE
             ShipDirection.REVERSE -> ShipDirection.DEFAULT
         }
-    }
-
-    fun toggleSimulation() {
-        if (isShipMoving.value) {
-            stopShipSimulation()
-        } else {
-            val req = RunningCreateRequest(
-                missionId = missionId,
-                stats = "test"
-            )
-
-            viewModelScope.launch {
-                try {
-                    backendApi?.createRunning(req)
-                } catch (e: Exception) {
-                    Log.e("API", "Błąd zapisywania przepływu statku (running)", e)
-                }
-            }
-            startShipSimulation()
-        }
-    }
-
-    fun onSimulationFinished() {
-        _waypointPositions.clear()
-        _isShipMoving.value = false
-        _currentShipDirection.value = ShipDirection.DEFAULT
-        shipMovingJob?.cancel()
-        shipMovingJob = null
     }
 
     fun getNextAvailableWaypointNo(): Int {

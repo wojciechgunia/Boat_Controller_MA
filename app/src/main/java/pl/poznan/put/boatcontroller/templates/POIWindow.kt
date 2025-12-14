@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -79,61 +80,76 @@ fun FullScreenPopup(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.8f))
     ) {
-        if (expandedImage) {
-            ExpandedImageView(
-                imageUrl = currentPoi.pictures?.replace("[","")?.replace("]","")?.split(",")?.get(0).toString(),
-                onClose = { expandedImage = false }
-            )
-        } else {
-            Row(Modifier.fillMaxSize()) {
-                ImageSection(
-                    imageUrl = currentPoi.pictures.toString().replace("[", "").replace("]", "")
-                        .split(",")[0],
-                    onExpand = { expandedImage = true },
-                    modifier = Modifier.weight(2f)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+        ) {
+            if (expandedImage) {
+                ExpandedImageView(
+                    imageUrl = currentPoi.pictures?.replace("[", "")?.replace("]", "")?.split(",")
+                        ?.get(0).toString(),
+                    onClose = { expandedImage = false }
                 )
-                ControlPanel(
-                    currentPoi = currentPoi,
-                    onEditName = { isEditingName = true; nameValue = TextFieldValue(currentPoi.name.orEmpty()) },
-                    onEditDescription = { isEditingDescription = true; descriptionValue = TextFieldValue(currentPoi.description.orEmpty()) },
-                    onDelete = onDelete,
-                    onPrev = {
-                        if (currentIndex > 0) currentIndex-- else currentIndex = poiList.lastIndex
-                    },
-                    onNext = {
-                        if (currentIndex < poiList.lastIndex) currentIndex++ else currentIndex = 0
-                    },
-                    modifier = Modifier.weight(1f)
-                )
+            } else {
+                Row(Modifier.fillMaxSize()) {
+                    ImageSection(
+                        imageUrl = currentPoi.pictures.toString().replace("[", "").replace("]", "")
+                            .split(",")[0],
+                        onExpand = { expandedImage = true },
+                        modifier = Modifier.weight(2f)
+                    )
+                    ControlPanel(
+                        currentPoi = currentPoi,
+                        onEditName = {
+                            isEditingName = true; nameValue =
+                            TextFieldValue(currentPoi.name.orEmpty())
+                        },
+                        onEditDescription = {
+                            isEditingDescription = true; descriptionValue =
+                            TextFieldValue(currentPoi.description.orEmpty())
+                        },
+                        onDelete = onDelete,
+                        onPrev = {
+                            if (currentIndex > 0) currentIndex-- else currentIndex =
+                                poiList.lastIndex
+                        },
+                        onNext = {
+                            if (currentIndex < poiList.lastIndex) currentIndex++ else currentIndex =
+                                0
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
 
-            }
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.align(Alignment.TopEnd)
-            ) {
-                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Black)
-            }
-        }
-
-        if (isEditingName || isEditingDescription) {
-            EditBar(
-                isEditingName = isEditingName,
-                isEditingDescription = isEditingDescription,
-                nameValue = nameValue,
-                descriptionValue = descriptionValue,
-                onNameChange = { nameValue = it },
-                onDescriptionChange = { descriptionValue = it },
-                onSaveName = {
-                    onSaveName(currentPoi.id,nameValue.text)
-                    isEditingName = false
-                    currentPoi = currentPoi.copy(name = nameValue.text)
-                },
-                onSaveDescription = {
-                    onSaveDescription(currentPoi.id,descriptionValue.text)
-                    isEditingDescription = false
-                    currentPoi = currentPoi.copy(description = descriptionValue.text)
                 }
-            )
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Black)
+                }
+            }
+
+            if (isEditingName || isEditingDescription) {
+                EditBar(
+                    isEditingName = isEditingName,
+                    isEditingDescription = isEditingDescription,
+                    nameValue = nameValue,
+                    descriptionValue = descriptionValue,
+                    onNameChange = { nameValue = it },
+                    onDescriptionChange = { descriptionValue = it },
+                    onSaveName = {
+                        onSaveName(currentPoi.id, nameValue.text)
+                        isEditingName = false
+                        currentPoi = currentPoi.copy(name = nameValue.text)
+                    },
+                    onSaveDescription = {
+                        onSaveDescription(currentPoi.id, descriptionValue.text)
+                        isEditingDescription = false
+                        currentPoi = currentPoi.copy(description = descriptionValue.text)
+                    }
+                )
+            }
         }
     }
 }
@@ -321,6 +337,7 @@ private fun EditBar(
         shadowElevation = 8.dp,
         modifier = Modifier
             .fillMaxWidth()
+            .systemBarsPadding()
     ) {
         Row(
             modifier = Modifier

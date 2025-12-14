@@ -18,9 +18,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,13 +31,15 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -65,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -139,144 +142,108 @@ fun AppNavHost(navController: NavHostController, mainVm: MainViewModel) {
 }
 
 @Composable
+fun StatusHeader(
+    restConnected: Boolean,
+    socketConnected: Boolean,
+    isLandscape: Boolean
+) {
+    val restText = if (restConnected) "Connected" else "Disconnected"
+    val restColor = if (restConnected) Color.Green else Color.Red
+    val socketText = if (socketConnected) "Connected" else "Disconnected"
+    val socketColor = if (socketConnected) Color.Green else Color.Red
+
+    val layoutModifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+
+    if (isLandscape) {
+        Row(
+            modifier = layoutModifier,
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatusItem("Server:", restText, restColor)
+            Spacer(modifier = Modifier.width(24.dp))
+            StatusItem("Boat:", socketText, socketColor)
+        }
+    } else {
+        Column(
+            modifier = layoutModifier,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            StatusItem("Server:", restText, restColor)
+            StatusItem("Boat:", socketText, socketColor)
+        }
+    }
+}
+
+@Composable
+fun StatusItem(label: String, status: String, color: Color) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text = label, fontSize = 5.em)
+        Text(text = status, fontSize = 5.em, color = color)
+    }
+}
+
+@Composable
 fun HomeContent(navController: NavController, mainVm: MainViewModel) {
+    val isLandscape = isLandscape()
+    val columnsCount = if (isLandscape) 2 else 1
+    val canAccessController = mainVm.isLoggedIn && mainVm.selectedMission.name != ""
+
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        if(isLandscape()) {
-            LazyColumn {
-                item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(horizontalArrangement = Arrangement.Center) {
-                            Text(text = "REST:  ", fontSize = 5.em)
-                            if (mainVm.isLoggedIn) {
-                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
-                            } else {
-                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.Center) {
-                            Text(text = "Socket:  ", fontSize = 5.em)
-                            if (mainVm.isSocketConnected) {
-                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
-                            } else {
-                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
-                            }
-                        }
-                    }
-                    Row {
-                        Column(
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            MenuButton(
-                                "Connection",
-                                R.drawable.bc_connect,
-                                navController,
-                                navDest = "connection",
-                            )
-
-                            MenuButton(
-                                "Controller",
-                                R.drawable.bc_controller,
-                                navController,
-                                mainVm.isLoggedIn,
-                                navDest = "controller",
-                                mainVm = mainVm
-                            )
-                        }
-                        Column(
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            MenuButton(
-                                "VR Cam",
-                                R.drawable.bc_vr,
-                                navController,
-                                mainVm.isLoggedIn,
-                                navDest = "vr_mode",
-                                mainVm = mainVm
-                            )
-                            MenuButton(
-                                "Waypoint",
-                                R.drawable.bc_waypoint,
-                                navController,
-                                mainVm.isLoggedIn,
-                                navDest = "waypoint",
-                                mainVm = mainVm,
-                            )
-                        }
-                    }
-                }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columnsCount),
+            contentPadding = PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item(span = { GridItemSpan(columnsCount) }) {
+                StatusHeader(
+                    restConnected = mainVm.isLoggedIn,
+                    socketConnected = mainVm.isSocketConnected,
+                    isLandscape = isLandscape
+                )
             }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                item {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Row {
-                            Text(text = "REST:  ", fontSize = 5.em)
-                            if (mainVm.isLoggedIn) {
-                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
-                            } else {
-                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row {
-                            Text(text = "Socket:  ", fontSize = 5.em)
-                            if (mainVm.isSocketConnected) {
-                                Text(text = "Connected", fontSize = 5.em, color = Color.Green)
-                            } else {
-                                Text(text = "Disconnected", fontSize = 5.em, color = Color.Red)
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    MenuButton(
-                        "Connection",
-                        R.drawable.bc_connect,
-                        navController,
-                        navDest = "connection",
-                    )
-
-                    MenuButton(
-                        "Controller",
-                        R.drawable.bc_controller,
-                        navController,
-                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
-                        navDest = "controller",
-                        mainVm = mainVm
-                    )
-
-                    MenuButton(
-                        "VR Cam",
-                        R.drawable.bc_vr,
-                        navController,
-                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
-                        navDest = "vr_mode",
-                        mainVm = mainVm
-                    )
-
-                    MenuButton(
-                        "Waypoint",
-                        R.drawable.bc_waypoint,
-                        navController,
-                        mainVm.isLoggedIn && mainVm.selectedMission.name != "",
-                        navDest = "waypoint",
-                        mainVm = mainVm,
-                    )
-                }
+            item {
+                MenuButton(
+                    "Connection",
+                    R.drawable.bc_connect,
+                    navController,
+                    navDest = "connection",
+                )
+            }
+            item {
+                MenuButton(
+                    "Controller",
+                    R.drawable.bc_controller,
+                    navController,
+                    enabled = if(isLandscape) mainVm.isLoggedIn else canAccessController,
+                    navDest = "controller",
+                    mainVm = mainVm
+                )
+            }
+            item {
+                MenuButton(
+                    "VR Cam",
+                    R.drawable.bc_vr,
+                    navController,
+                    enabled = if(isLandscape) mainVm.isLoggedIn else canAccessController,
+                    navDest = "vr_mode",
+                    mainVm = mainVm
+                )
+            }
+            item {
+                MenuButton(
+                    "Waypoint",
+                    R.drawable.bc_waypoint,
+                    navController,
+                    enabled = if(isLandscape) mainVm.isLoggedIn else canAccessController,
+                    navDest = "waypoint",
+                    mainVm = mainVm,
+                )
             }
         }
     }
@@ -769,10 +736,22 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            Text("Welcome ${mainVm.username}", style = MaterialTheme.typography.headlineMedium)
-            Text("Ship: ${mainVm.selectedShip.name}", style = MaterialTheme.typography.headlineSmall)
-            Text("Role: ${if(mainVm.isCaptain) "Captain" else "Observer"}", style = MaterialTheme.typography.headlineSmall)
-            Text("Mission: ${if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-"}", style = MaterialTheme.typography.headlineSmall)
+            Row {
+                Text("Welcome, ", style = MaterialTheme.typography.headlineMedium)
+                Text(mainVm.username, color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+            }
+            Row {
+                Text("Current boat: ", style = MaterialTheme.typography.headlineMedium)
+                Text(mainVm.selectedShip.name, color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+            }
+            Row {
+                Text("Your role: ", style = MaterialTheme.typography.headlineMedium)
+                Text(if(mainVm.isCaptain) "Captain" else "Observer", color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+            }
+            Row {
+                Text("Mission: ", style = MaterialTheme.typography.headlineMedium)
+                Text(if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-", color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider(thickness = 1.dp, color = Color.White)
@@ -833,125 +812,125 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
         Spacer(modifier = Modifier.height(14.dp))
         
         // Panel testowy socketu
-        Text("Socket Test Panel", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // Status połączenia
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Status: ",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = if(mainVm.isSocketConnected) "✅ Connected" else "❌ Disconnected",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if(mainVm.isSocketConnected) Color.Green else Color.Red
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        // Przyciski testowe
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { mainVm.testSocketConnection() },
-                enabled = mainVm.isSocketConnected,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4CAF50),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier.weight(1f).height(40.dp)
-            ) {
-                Text("Get BI", fontSize = 3.em)
-            }
-            Button(
-                onClick = { mainVm.testSetSpeed(0.5, 0.5) },
-                enabled = mainVm.isSocketConnected,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF2196F3),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier.weight(1f).height(40.dp)
-            ) {
-                Text("Test Speed", fontSize = 3.em)
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { mainVm.testSetAction("ST", "") },
-                enabled = mainVm.isSocketConnected,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF9800),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier.weight(1f).height(40.dp)
-            ) {
-                Text("Start", fontSize = 3.em)
-            }
-            Button(
-                onClick = { mainVm.testSetAction("SP", "") },
-                enabled = mainVm.isSocketConnected,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF44336),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier.weight(1f).height(40.dp)
-            ) {
-                Text("Stop", fontSize = 3.em)
-            }
-        }
-        
-        // Lista ostatnich wiadomości
-        if (mainVm.socketMessages.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Recent Messages:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    mainVm.socketMessages.take(5).forEach { msg ->
-                        Text(
-                            text = msg,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-        }
-        
-        if (mainVm.lastSocketResponse.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Last Event:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                    Text(mainVm.lastSocketResponse, style = MaterialTheme.typography.bodySmall, color = Color.White)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
+//        Text("Socket Test Panel", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+//        Spacer(modifier = Modifier.height(8.dp))
+//
+//        // Status połączenia
+//        Row(
+//            modifier = Modifier.fillMaxWidth(),
+//            horizontalArrangement = Arrangement.SpaceBetween,
+//            verticalAlignment = Alignment.CenterVertically
+//        ) {
+//            Row(verticalAlignment = Alignment.CenterVertically) {
+//                Text(
+//                    text = "Status: ",
+//                    style = MaterialTheme.typography.bodyMedium
+//                )
+//                Text(
+//                    text = if(mainVm.isSocketConnected) "✅ Connected" else "❌ Disconnected",
+//                    style = MaterialTheme.typography.bodyMedium,
+//                    color = if(mainVm.isSocketConnected) Color.Green else Color.Red
+//                )
+//            }
+//        }
+//
+//        Spacer(modifier = Modifier.height(12.dp))
+//
+//        // Przyciski testowe
+//        Row(
+//            modifier = Modifier.fillMaxWidth(),
+//            horizontalArrangement = Arrangement.spacedBy(8.dp)
+//        ) {
+//            Button(
+//                onClick = { mainVm.testSocketConnection() },
+//                enabled = mainVm.isSocketConnected,
+//                colors = ButtonDefaults.buttonColors(
+//                    containerColor = Color(0xFF4CAF50),
+//                    contentColor = Color.White
+//                ),
+//                modifier = Modifier.weight(1f).height(40.dp)
+//            ) {
+//                Text("Get BI", fontSize = 3.em)
+//            }
+//            Button(
+//                onClick = { mainVm.testSetSpeed(0.5, 0.5) },
+//                enabled = mainVm.isSocketConnected,
+//                colors = ButtonDefaults.buttonColors(
+//                    containerColor = Color(0xFF2196F3),
+//                    contentColor = Color.White
+//                ),
+//                modifier = Modifier.weight(1f).height(40.dp)
+//            ) {
+//                Text("Test Speed", fontSize = 3.em)
+//            }
+//        }
+//
+//        Spacer(modifier = Modifier.height(8.dp))
+//
+//        Row(
+//            modifier = Modifier.fillMaxWidth(),
+//            horizontalArrangement = Arrangement.spacedBy(8.dp)
+//        ) {
+//            Button(
+//                onClick = { mainVm.testSetAction("ST", "") },
+//                enabled = mainVm.isSocketConnected,
+//                colors = ButtonDefaults.buttonColors(
+//                    containerColor = Color(0xFFFF9800),
+//                    contentColor = Color.White
+//                ),
+//                modifier = Modifier.weight(1f).height(40.dp)
+//            ) {
+//                Text("Start", fontSize = 3.em)
+//            }
+//            Button(
+//                onClick = { mainVm.testSetAction("SP", "") },
+//                enabled = mainVm.isSocketConnected,
+//                colors = ButtonDefaults.buttonColors(
+//                    containerColor = Color(0xFFF44336),
+//                    contentColor = Color.White
+//                ),
+//                modifier = Modifier.weight(1f).height(40.dp)
+//            ) {
+//                Text("Stop", fontSize = 3.em)
+//            }
+//        }
+//
+//        // Lista ostatnich wiadomości
+//        if (mainVm.socketMessages.isNotEmpty()) {
+//            Spacer(modifier = Modifier.height(12.dp))
+//            Card(
+//                modifier = Modifier.fillMaxWidth(),
+//                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+//            ) {
+//                Column(modifier = Modifier.padding(12.dp)) {
+//                    Text("Recent Messages:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+//                    Spacer(modifier = Modifier.height(4.dp))
+//                    mainVm.socketMessages.take(5).forEach { msg ->
+//                        Text(
+//                            text = msg,
+//                            style = MaterialTheme.typography.bodySmall,
+//                            color = Color.White,
+//                            modifier = Modifier.padding(vertical = 2.dp)
+//                        )
+//                    }
+//                }
+//            }
+//        }
+//
+//        if (mainVm.lastSocketResponse.isNotEmpty()) {
+//            Spacer(modifier = Modifier.height(8.dp))
+//            Card(
+//                modifier = Modifier.fillMaxWidth(),
+//                colors = CardDefaults.cardColors(containerColor = Color(0xFF2E2E2E))
+//            ) {
+//                Column(modifier = Modifier.padding(12.dp)) {
+//                    Text("Last Event:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+//                    Text(mainVm.lastSocketResponse, style = MaterialTheme.typography.bodySmall, color = Color.White)
+//                }
+//            }
+//        }
+//
+//        Spacer(modifier = Modifier.height(14.dp))
 
         Button(
             onClick = {
