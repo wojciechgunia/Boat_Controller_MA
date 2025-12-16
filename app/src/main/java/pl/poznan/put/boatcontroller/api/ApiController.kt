@@ -32,18 +32,24 @@ interface AuthApi {
 
 object AuthClient {
     private var BASE_URL = "http://10.0.2.2:8000/"
+    private var retrofit: Retrofit? = null
 
     fun setBaseUrl(url: String) {
         BASE_URL = url
+        // Invalidate cached client so new base url is used on the next call
+        retrofit = null
     }
 
-    val authApi: AuthApi by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(AuthApi::class.java)
-    }
+    val authApi: AuthApi
+        get() {
+            if (retrofit == null) {
+                retrofit = Retrofit.Builder()
+                    .baseUrl(BASE_URL)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .build()
+            }
+            return retrofit!!.create(AuthApi::class.java)
+        }
 }
 
 object ApiClient {

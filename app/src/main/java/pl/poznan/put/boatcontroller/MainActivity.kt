@@ -3,7 +3,6 @@ package pl.poznan.put.boatcontroller
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -55,7 +54,9 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,6 +87,8 @@ import com.google.accompanist.permissions.shouldShowRationale
 import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
 import pl.poznan.put.boatcontroller.dataclass.ShipOption
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
+
+val LocalFormEnabled = compositionLocalOf { true }
 
 class MainActivity : ComponentActivity() {
     private val mainVm by viewModels<MainViewModel>()
@@ -358,7 +361,10 @@ fun ConnectionForm(navController: NavController, mainVm: MainViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShipSelect(mainVm: MainViewModel) {
+fun ShipSelect(
+    mainVm: MainViewModel,
+    enabled: Boolean = true
+) {
     var expanded by remember { mutableStateOf(false) }
     var selectedText by remember { mutableStateOf("") }
     var ships = emptyList<ShipOption>()
@@ -389,14 +395,19 @@ fun ShipSelect(mainVm: MainViewModel) {
     }
 
     ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
+        expanded = expanded && enabled,
+        onExpandedChange = {
+            if (enabled) {
+                expanded = !expanded
+            }
+        },
         modifier = Modifier.fillMaxWidth()
     ) {
         OutlinedTextField(
             value = selectedText,
             onValueChange = {},
-            readOnly = true,
+                readOnly = true,
+                enabled = enabled,
             label = { Text("Select ship") },
             trailingIcon = {
                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
@@ -407,7 +418,7 @@ fun ShipSelect(mainVm: MainViewModel) {
         )
 
         ExposedDropdownMenu(
-            expanded = expanded,
+            expanded = expanded && enabled,
             onDismissRequest = { expanded = false },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -434,14 +445,28 @@ fun ShipSelect(mainVm: MainViewModel) {
                         }
                     },
                     onClick = {
-                        selectedText = "${option.name} (${option.role})"
-                        mainVm.updateSelectedShip(option.name, option.role)
-                        expanded = false
-                    }
+                        if (enabled) {
+                            selectedText = "${option.name} (${option.role})"
+                            mainVm.updateSelectedShip(option.name, option.role)
+                            expanded = false
+                        }
+                    },
+                    enabled = enabled
                 )
             }
         }
     }
+}
+
+@Composable
+fun FormEnabled(
+    enabled: Boolean,
+    content: @Composable () -> Unit
+) {
+    CompositionLocalProvider(
+        LocalFormEnabled provides enabled,
+        content = content
+    )
 }
 
 @Composable
@@ -452,115 +477,134 @@ fun LoginForm(
 ) {
     var usernameError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
+    val isConnecting = mainVm.isConnecting
+    val formEnabled = LocalFormEnabled.current && !isConnecting
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp)
-            .padding(top = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Button(onClick = onShowSettings, modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .height(50.dp),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4170A6),
-                contentColor = Color.White
-            ),) {
-            Text("Change connection settings ",fontSize = 4.em)
-            Icon(
-                painter = painterResource(id = R.drawable.settings),
-                contentDescription = "settings",
-                modifier = Modifier
-                    .size(24.dp)
-            )
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = mainVm.username,
-            onValueChange = {
-                mainVm.updateUsername(it)
-                usernameError = validateUsername(it)
-            },
-            label = { Text("Username") },
-            isError = usernameError != null,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (usernameError != null) {
-            Text(usernameError!!, color = Color.Red)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = mainVm.password,
-            onValueChange = {
-                mainVm.updatePassword(it)
-                passwordError = validatePassword(it)
-            },
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
-            isError = passwordError != null,
-            modifier = Modifier.fillMaxWidth()
-        )
-        if (passwordError != null) {
-            Text(passwordError!!, color = Color.Red)
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = mainVm.isRemembered,
-                onCheckedChange = { mainVm.updateIsRemembered(it) },
-                colors = CheckboxDefaults.colors(
-                    checkedColor = Color(0xFF4170A6),
-                    checkmarkColor = Color.White,
-                    uncheckedColor = Color.Gray
-                )
-            )
-            Text("Remember login data")
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        ShipSelect(mainVm)
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                if (usernameError == null && passwordError == null && mainVm.selectedShip.name != "") {
-                    isLoading = true
-                    Log.d("Connection", "Start")
-                    mainVm.connect()
-                    isLoading = false
-                    if (mainVm.isLoggedIn && !mainVm.error) {
-                        onConnect()
-                    }
-                }
-            },
+    FormEnabled(enabled = !isConnecting) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .height(60.dp),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4170A6),
-                contentColor = Color.White
-            ),
-            enabled = !isLoading && mainVm.password!="" && mainVm.username!="" && mainVm.selectedShip.name!=""
+                .fillMaxSize()
+                .padding(24.dp)
+                .padding(top = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(if (isLoading) "Connecting... " else "Connect ",fontSize = 8.em)
-            Icon(
-                painter = painterResource(id = R.drawable.connect),
-                contentDescription = "Connect",
-                modifier = Modifier.size(36.dp))
+            Button(
+                onClick = onShowSettings, modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(50.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4170A6),
+                    contentColor = Color.White
+                ),
+            ) {
+                Text("Change connection settings ", fontSize = 4.em)
+                Icon(
+                    painter = painterResource(id = R.drawable.settings),
+                    contentDescription = "settings",
+                    modifier = Modifier
+                        .size(24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = mainVm.username,
+                onValueChange = {
+                    if (formEnabled) {
+                        mainVm.updateUsername(it)
+                        usernameError = validateUsername(it)
+                    }
+                },
+                label = { Text("Username") },
+                isError = usernameError != null,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = formEnabled
+            )
+            if (usernameError != null) {
+                Text(usernameError!!, color = Color.Red)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = mainVm.password,
+                onValueChange = {
+                    if (formEnabled) {
+                        mainVm.updatePassword(it)
+                        passwordError = validatePassword(it)
+                    }
+                },
+                label = { Text("Password") },
+                visualTransformation = PasswordVisualTransformation(),
+                isError = passwordError != null,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = formEnabled
+            )
+            if (passwordError != null) {
+                Text(passwordError!!, color = Color.Red)
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = mainVm.isRemembered,
+                    onCheckedChange = { if (formEnabled) mainVm.updateIsRemembered(it) },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = Color(0xFF4170A6),
+                        checkmarkColor = Color.White,
+                        uncheckedColor = Color.Gray
+                    )
+                )
+                Text("Remember login data")
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            ShipSelect(mainVm, enabled = formEnabled)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (isConnecting) {
+                Text(
+                    text = "Connecting to ${mainVm.serverIp}:${mainVm.serverPort}...",
+                    color = Color.Gray,
+                    fontSize = 4.em
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Button(
+                onClick = {
+                    if (formEnabled && usernameError == null && passwordError == null && mainVm.selectedShip.name != "") {
+                        mainVm.connect()
+                        if (mainVm.isLoggedIn && !mainVm.error) {
+                            onConnect()
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(60.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4170A6),
+                    contentColor = Color.White
+                 ),
+             enabled = formEnabled && mainVm.password != "" && mainVm.username != "" && mainVm.selectedShip.name != ""
+            ) {
+                Text(if (isConnecting) "Connecting... " else "Connect ", fontSize = 8.em)
+                Icon(
+                    painter = painterResource(id = R.drawable.connect),
+                    contentDescription = "Connect",
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
     }
     ErrorBubble(

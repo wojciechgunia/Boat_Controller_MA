@@ -55,6 +55,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var isLoggedIn by mutableStateOf<Boolean>(false)
         private set
 
+    var isConnecting by mutableStateOf<Boolean>(false)
+        private set
+
     var selectedMission by mutableStateOf<MissionListItemDto>(MissionListItemDto(-1, ""))
         private set
 
@@ -281,27 +284,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun connect() {
+        if (isConnecting) return
+        isConnecting = true
         viewModelScope.launch {
             error = false
             errorMessage = null
+            isLoggedIn = false
 
-            getLoggedIn()
-            if (error) {
-                // Logowanie nie powiodło się – nie kontynuujemy
-                SocketRepository.stop()
-                return@launch
-            }
+            try {
+                getLoggedIn()
+                if (error) {
+                    // Logowanie nie powiodło się – nie kontynuujemy
+                    SocketRepository.stop()
+                    return@launch
+                }
 
-            getMissions()
+                getMissions()
 
-            if (!error && isLoggedIn) {
-                startSocketConnection()
-                // Przywróć zapisany statek Demo jeśli został zapisany
-                // Inne statki zostaną przywrócone w observeSocketEvents() po otrzymaniu BoatInformation
-                restoreSelectedShip()
-            } else {
-                // W razie niepowodzenia upewniamy się, że socket jest zatrzymany
-                SocketRepository.stop()
+                if (!error && isLoggedIn) {
+                    startSocketConnection()
+                    // Przywróć zapisany statek Demo jeśli został zapisany
+                    // Inne statki zostaną przywrócone w observeSocketEvents() po otrzymaniu BoatInformation
+                    restoreSelectedShip()
+                } else {
+                    // W razie niepowodzenia upewniamy się, że socket jest zatrzymany
+                    SocketRepository.stop()
+                }
+            } finally {
+                isConnecting = false
             }
         }
     }
@@ -334,6 +344,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             Log.e("API", "Login error", e)
             error = true
+            isLoggedIn = false
 
             when (e) {
                 is HttpException -> {
