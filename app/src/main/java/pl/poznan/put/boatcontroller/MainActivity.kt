@@ -499,6 +499,7 @@ fun LoginForm(
                     containerColor = Color(0xFF4170A6),
                     contentColor = Color.White
                 ),
+                enabled = formEnabled
             ) {
                 Text("Change connection settings ", fontSize = 4.em)
                 Icon(
@@ -607,18 +608,21 @@ fun LoginForm(
             }
         }
     }
-    ErrorBubble(
-        visible = mainVm.error,
-        message = mainVm.errorMessage
-            ?: "An error occurred during connection. Check the connection parameters and login credentials.",
-        onClose = { mainVm.clearError() }
-    )
+
+    val errorText = mainVm.errorMessage?.takeIf { it.isNotBlank() }
+    if (errorText != null) {
+        ErrorBubble(
+            visible = mainVm.error,
+            message = errorText,
+            onClose = { mainVm.clearError() }
+        )
+    }
 }
 
 @Composable
 fun ErrorBubble(
     modifier: Modifier = Modifier,
-    message: String = "An error occurred during connection. Check the connection parameters and login credentials.",
+    message: String,
     visible: Boolean = false,
     onClose: () -> Unit
 ) {

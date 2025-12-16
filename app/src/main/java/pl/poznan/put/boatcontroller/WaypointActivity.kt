@@ -189,7 +189,7 @@ class WaypointActivity : ComponentActivity() {
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(toolbarWidth)
-                    .background(Color.Black)
+                    .background(Color.Black.copy(alpha = 0.8f))
             ) {
                 if (waypointVm.isToolbarOpened) {
                     Column(

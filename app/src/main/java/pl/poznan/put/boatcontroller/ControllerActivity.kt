@@ -152,7 +152,6 @@ class ControllerActivity: ComponentActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        sendMode("MEN")
         setResult(Activity.RESULT_OK)
         @Suppress("DEPRECATION")
         super.onBackPressed()
@@ -189,11 +188,6 @@ class ControllerActivity: ComponentActivity() {
         viewModel.updateHomePosition(HomePosition(lat, lon))
         // Brak dedykowanej komendy w nowym protokole – używamy akcji GH (Go Home)
         viewModel.sendAction("GH", "")
-    }
-
-    fun sendMode(mode: String) {
-        // Nowy protokół: SA:{action}:{payload}:{s_num}:SA z action=SM (Set Mode)
-        viewModel.sendAction("SM", mode)
     }
 
     @Composable
@@ -351,14 +345,7 @@ class ControllerActivity: ComponentActivity() {
                             tabs.forEachIndexed { index, title ->
                                 Tab(
                                     selected = viewModel.selectedTab == index,
-                                    onClick = { viewModel.selectedTab = index
-                                        when (index) {
-                                            0 -> { sendMode("MAP") }
-                                            1 -> { sendMode("SNR") }
-                                            2 -> { sendMode("SEN") }
-                                            3 -> { sendMode("CAM") }
-                                        }
-                                    },
+                                    onClick = { viewModel.selectedTab = index },
                                     text = { Text(title) }
                                 )
                             }

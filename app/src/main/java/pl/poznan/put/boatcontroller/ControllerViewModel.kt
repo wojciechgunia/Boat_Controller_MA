@@ -118,11 +118,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         this.cameraFeed = cameraFeed
     }
 
-    fun updateMissionId(missionId: Int) {
-        this.missionId = missionId
-        initModel()
-    }
-
     fun initModel() {
         viewModelScope.launch {
             try {
@@ -165,6 +160,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         observeSocket()
+        observeSocketConnection()
         loadSavedMission()
     }
     
@@ -216,10 +212,34 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun observeSocketConnection() {
+        viewModelScope.launch {
+            SocketRepository.connectionState.collectLatest { connected ->
+                if (connected) {
+                    // Po każdym ponownym zestawieniu połączenia wyślij aktualne moce silników,
+                    // żeby łódka (lub serwer testowy) od razu dostała wartości SS
+                    // nawet jeśli użytkownik nic nie przesunie po reconnect.
+                    Log.d(
+                        "ControllerViewModel",
+                        "Socket connected – resending current speed L=$leftEnginePower R=$rightEnginePower"
+                    )
+                    SocketRepository.send(
+                        SocketCommand.SetSpeed(
+                            left = leftEnginePower.toDouble(),
+                            right = rightEnginePower.toDouble(),
+                            sNum = nextSNum()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     private fun nextSNum(): Int = seq.incrementAndGet()
 
     fun sendSpeed(left: Double, right: Double) {
         viewModelScope.launch {
+            currentSpeed = ((left + right) / 2.0).toFloat()
             SocketRepository.send(SocketCommand.SetSpeed(left, right, nextSNum()))
         }
     }
