@@ -27,15 +27,14 @@ import org.maplibre.geojson.Point
 import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.ApiService
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
+import pl.poznan.put.boatcontroller.dataclass.MapMode
 import pl.poznan.put.boatcontroller.dataclass.POIObject
 import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
-import pl.poznan.put.boatcontroller.dataclass.RunningCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.WaypointCreateRequest
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.dataclass.WaypointUpdateRequest
 import pl.poznan.put.boatcontroller.enums.ShipDirection
-import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
 import java.util.concurrent.atomic.AtomicInteger
 import pl.poznan.put.boatcontroller.socket.SocketRepository
@@ -73,7 +72,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
 
     var waypointToMoveNo: Int? by mutableStateOf(null)
-    var waypointMode by mutableStateOf<WaypointMode?>(null)
+    var mapMode by mutableStateOf<MapMode>(MapMode.None)
         private set
 
     private var _poiPositions = mutableStateListOf<POIObject>()
@@ -330,11 +329,11 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         setPhonePosition(shipPos.lat, shipPos.lon)
     }
 
-    fun toggleWaypointEditMode(mode: WaypointMode?) {
-        waypointMode = if(waypointMode != mode && mode != null) {
-            mode
+    fun toggleMapEditMode(mode: MapMode) {
+        mapMode = if (mapMode == mode) {
+            MapMode.None
         } else {
-            null
+            mode
         }
     }
 
@@ -415,11 +414,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveCameraPosition(lat: Double, lng: Double, zoom: Double) {
         _cameraPosition.value = CameraPositionState(lat, lng, zoom)
-    }
-
-    fun updateMissionId(missionId: Int) {
-        this.missionId = missionId
-        initModel()
     }
 
     fun updatePoiData(id: Int, name: String, description: String) {

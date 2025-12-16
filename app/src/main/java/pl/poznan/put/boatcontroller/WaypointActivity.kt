@@ -103,9 +103,9 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.visibility
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
+import pl.poznan.put.boatcontroller.dataclass.MapMode
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
-import pl.poznan.put.boatcontroller.enums.WaypointMode
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
@@ -161,7 +161,7 @@ class WaypointActivity : ComponentActivity() {
         val screenHeight = LocalWindowInfo.current.containerSize.height
         val screenHeightDp = with(density) { screenHeight.toDp() }
 
-        val toolbarWidth = screenWidthDp * 0.2f
+        val toolbarWidth = screenWidthDp * 0.15f
         val arrowBoxWidth = screenWidthDp * 0.05f
         val arrowBoxHeight = screenHeightDp * 0.2f
         val arrowBoxOffset =
@@ -195,7 +195,7 @@ class WaypointActivity : ComponentActivity() {
                     Column(
                         modifier = Modifier
                             .statusBarsPadding()
-                            .displayCutoutPadding()
+                            .padding(6.dp)
                     ) {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -218,39 +218,39 @@ class WaypointActivity : ComponentActivity() {
                         ) {
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_add,
-                                waypointMode = WaypointMode.WAYPOINT_ADD,
+                                mapMode = MapMode.Waypoint.Add,
                                 onClick = {
-                                    waypointVm.toggleWaypointEditMode(WaypointMode.WAYPOINT_ADD)
+                                    waypointVm.toggleMapEditMode(MapMode.Waypoint.Add)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_delete,
-                                waypointMode = WaypointMode.WAYPOINT_DELETE,
+                                mapMode = MapMode.Waypoint.Delete,
                                 onClick = {
-                                    waypointVm.toggleWaypointEditMode(WaypointMode.WAYPOINT_DELETE)
+                                    waypointVm.toggleMapEditMode(MapMode.Waypoint.Delete)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_move,
-                                waypointMode = WaypointMode.WAYPOINT_MOVE,
+                                mapMode = MapMode.Waypoint.Move,
                                 onClick = {
-                                    waypointVm.toggleWaypointEditMode(WaypointMode.WAYPOINT_MOVE)
+                                    waypointVm.toggleMapEditMode(MapMode.Waypoint.Move)
                                 },
                                 isEnabled = !waypointVm.isShipMoving.value
                             )
                             IconWithEffectButton(
                                 drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
-                                waypointMode = WaypointMode.SHIP_DEFAULT_MOVE,
+                                mapMode = MapMode.Ship.DefaultMove,
                                 onClick = {
-                                    waypointVm.toggleWaypointEditMode(WaypointMode.SHIP_DEFAULT_MOVE)
+                                    waypointVm.toggleMapEditMode(MapMode.Ship.DefaultMove)
 //                                    waypointVm.toggleSimulation()
                                 },
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.back_to_home,
-                                waypointMode = WaypointMode.SHIP_REVERSE_MOVE,
+                                mapMode = MapMode.Ship.ReverseMove,
                                 onClick = {
                                     waypointVm.goToHome()
 //                                    waypointVm.stopShipSimulation()
@@ -273,7 +273,17 @@ class WaypointActivity : ComponentActivity() {
                     .align(Alignment.CenterStart)
                     .offset(x = arrowBoxOffset)
                     .background(Color.DarkGray, shape = RoundedCornerShape(8.dp))
-                    .clickable { waypointVm.isToolbarOpened = !waypointVm.isToolbarOpened },
+                    .clickable {
+                        val newValue = !waypointVm.isToolbarOpened
+                        waypointVm.isToolbarOpened = newValue
+
+                        if (!newValue) {
+                            val mode = waypointVm.mapMode
+                            if (mode is MapMode.Waypoint) {
+                                waypointVm.toggleMapEditMode(mode)
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -288,21 +298,21 @@ class WaypointActivity : ComponentActivity() {
     @Composable
     fun IconWithEffectButton(
         drawableId: Int,
-        waypointMode: WaypointMode?,
+        mapMode: MapMode,
         onClick: () -> Unit,
         isEnabled: Boolean = true
     ) {
         val borderColor = when {
             !isEnabled -> colorResource(id = R.color.DARK_RED)
-            isEnabled && waypointMode == waypointVm.waypointMode -> Color.Green
-            isEnabled && waypointMode != waypointVm.waypointMode -> Color.Transparent
+            isEnabled && mapMode == waypointVm.mapMode -> Color.Green
+            isEnabled && mapMode != waypointVm.mapMode -> Color.Transparent
             else -> Color.Transparent
         }
 
         val shadowColor = when {
             !isEnabled -> colorResource(id = R.color.DARK_RED)
-            isEnabled && waypointMode == waypointVm.waypointMode -> Color.Green
-            isEnabled && waypointMode != waypointVm.waypointMode -> Color.Transparent
+            isEnabled && mapMode == waypointVm.mapMode -> Color.Green
+            isEnabled && mapMode != waypointVm.mapMode -> Color.Transparent
             else -> Color.Transparent
         }
 
@@ -311,7 +321,7 @@ class WaypointActivity : ComponentActivity() {
             modifier = Modifier
                 .size(48.dp)
                 .shadow(
-                    elevation = if (waypointMode == waypointVm.waypointMode) 8.dp else 0.dp,
+                    elevation = if (mapMode == waypointVm.mapMode) 8.dp else 0.dp,
                     shape = CircleShape,
                     ambientColor = shadowColor,
                     spotColor = shadowColor
@@ -340,6 +350,8 @@ class WaypointActivity : ComponentActivity() {
         val phonePosition = waypointVm.phonePosition.value
         val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
         val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
+        val mapMode = waypointVm.mapMode
+        val isToolbarOpened = waypointVm.isToolbarOpened
 
         LaunchedEffect(Unit) {
             if (!locationPermissionState.status.isGranted) {
@@ -389,6 +401,29 @@ class WaypointActivity : ComponentActivity() {
                     zoom
                 )
             )
+        }
+
+        LaunchedEffect(mapMode, isToolbarOpened, map) {
+            val mapboxMap = map ?: return@LaunchedEffect
+
+            val isEditMode = waypointVm.mapMode is MapMode.Waypoint
+
+            if (!isToolbarOpened || !isEditMode) {
+                mapboxMap.setMinZoomPreference(0.0)
+                return@LaunchedEffect
+            }
+
+            val editMinZoom = 15.0
+            val currentZoom = mapboxMap.cameraPosition.zoom
+
+            mapboxMap.setMinZoomPreference(editMinZoom)
+
+            if (currentZoom < editMinZoom) {
+                map.animateCamera(
+                    CameraUpdateFactory.zoomTo(editMinZoom),
+                    cameraZoomAnimationTime * 1000
+                )
+            }
         }
 
         LaunchedEffect(waypoints.toList()) {
@@ -555,8 +590,20 @@ class WaypointActivity : ComponentActivity() {
                                 ?.getStringProperty("no")
                                 ?.toIntOrNull()
 
-                            when (waypointVm.waypointMode) {
-                                WaypointMode.WAYPOINT_ADD -> {
+                            // Jeśli jakaś flaga jest zaznaczona do przeniesienia, to niezależnie od trybu
+                            // następne kliknięcie ustawia jej nową pozycję.
+                            val pendingMoveNo = waypointVm.waypointToMoveNo
+                            if (pendingMoveNo != null) {
+                                waypointVm.moveWaypoint(pendingMoveNo, latLng.longitude, latLng.latitude)
+                                waypointVm.waypointToMoveNo = null
+
+                                val bitmap = waypointVm.waypointBitmaps[pendingMoveNo]!!
+                                style.addImage("waypoint-icon-$pendingMoveNo", bitmap)
+                                return@addOnMapClickListener true
+                            }
+
+                            when (waypointVm.mapMode) {
+                                MapMode.Waypoint.Add -> {
                                     val waypointNo = waypointVm.getNextAvailableWaypointNo()
 
                                     waypointVm.addWaypoint(latLng.longitude, latLng.latitude)
@@ -565,14 +612,14 @@ class WaypointActivity : ComponentActivity() {
                                     true
                                 }
 
-                                WaypointMode.WAYPOINT_DELETE -> {
+                                MapMode.Waypoint.Delete -> {
                                     if (clickedNo != null) {
                                         waypointVm.removeWaypoint(clickedNo)
                                         true
                                     } else false
                                 }
 
-                                WaypointMode.WAYPOINT_MOVE -> {
+                                MapMode.Waypoint.Move -> {
                                     val toMoveNo = waypointVm.waypointToMoveNo
                                     if (toMoveNo == null) {
                                         if (clickedNo != null && waypointVm.getWaypointByNo(clickedNo)?.isCompleted == false) {
@@ -585,12 +632,6 @@ class WaypointActivity : ComponentActivity() {
                                             )
                                             style.addImage("waypoint-icon-$clickedNo", selectedBitmap)
                                         }
-                                    } else {
-                                        waypointVm.moveWaypoint(toMoveNo, latLng.longitude, latLng.latitude)
-                                        waypointVm.waypointToMoveNo = null
-
-                                        val bitmap = waypointVm.waypointBitmaps[toMoveNo]!!
-                                        style.addImage("waypoint-icon-$toMoveNo", bitmap)
                                     }
                                     true
                                 }
@@ -729,13 +770,6 @@ class WaypointActivity : ComponentActivity() {
             ?.setGeoJson(waypointVm.getShipFeature())
         style.getSourceAs<GeoJsonSource>("phone-source")
             ?.setGeoJson(waypointVm.getPhoneLocationFeature())
-//        Log.d("WAYPOINT_BITMAPS_CACHE", "Aktualna zawartość waypointBitmaps:")
-//        waypointVm.waypointBitmaps.forEach { (no, bitmap) ->
-//            Log.d(
-//                "WAYPOINT_BITMAPS_CACHE",
-//                "no=$no | bitmap=${bitmap.width}x${bitmap.height}"
-//            )
-//        }
     }
 
     fun getOrCreateWaypointBitmap(no: Int, context: Context): Bitmap {

@@ -8,9 +8,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.AuthClient
 import pl.poznan.put.boatcontroller.api.TokenManager
@@ -43,6 +48,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     var error by mutableStateOf(false)
+        private set
+    var errorMessage by mutableStateOf<String?>(null)
         private set
 
     var isLoggedIn by mutableStateOf<Boolean>(false)
@@ -252,8 +259,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         isLoggedIn = value
     }
 
-    fun updateError(value: Boolean) {
-        error = value
+    fun setError(message: String) {
+        errorMessage = message
+        error = true
+    }
+
+    fun clearError() {
+        error = false
+        errorMessage = null
     }
 
     fun updateSelectedMission(value: MissionListItemDto) {
@@ -270,7 +283,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun connect() {
         viewModelScope.launch {
             error = false
+            errorMessage = null
+
             getLoggedIn()
+            if (error) {
+                // Logowanie nie powiodło się – nie kontynuujemy
+                SocketRepository.stop()
+                return@launch
+            }
+
             getMissions()
 
             if (!error && isLoggedIn) {
@@ -297,6 +318,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         SocketRepository.stop()
     }
 
+    data class ErrorDetailResponse(val detail: String)
+
     suspend fun getLoggedIn() {
         try {
             AuthClient.setBaseUrl("http://${serverIp}:${serverPort}/")
@@ -311,6 +334,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             Log.e("API", "Login error", e)
             error = true
+
+            when (e) {
+                is HttpException -> {
+                    val code = e.code()
+                    if (code == 400 || code == 401) {
+                        val errorBody = e.response()?.errorBody()?.string()
+                        if (errorBody != null) {
+                            try {
+                                val errorResponse = Gson().fromJson(errorBody, ErrorDetailResponse::class.java)
+                                setError(errorResponse.detail)
+                                Log.e("API", "Detailed Server Error: ${errorResponse.detail}")
+                                return
+
+                            } catch (jsonEx: Exception) {
+                                Log.e("API", "Error parsing detailed JSON: $jsonEx")
+                                setError("Login failed (Code $code).")
+                                return
+                            }
+                        } else {
+                            setError("Login failed (Code $code). Server returned no details.")
+                            return
+                        }
+                    }
+
+                    setError("Server error (Code $code) while logging in.")
+                }
+                is UnknownHostException, is ConnectException, is SocketTimeoutException -> {
+                    setError("Cannot connect to server at $serverIp:$serverPort. Check IP, port and network.")
+                }
+                else -> {
+                    setError("Unexpected error during login. Try again.")
+                }
+            }
         }
     }
 
@@ -336,6 +392,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } else {
                 error = true
+                setError("Failed to load missions from server. Please try again.")
             }
             if(!error) {
                 isLoggedIn = true
@@ -344,6 +401,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             Log.e("API", "Missions fetch error", e)
             isLoggedIn = false
             error = true
+            if (errorMessage == null) {
+                // Jeśli nie ustawiliśmy wcześniej bardziej precyzyjnego komunikatu (np. z logowania),
+                // pokaż ogólny błąd misji.
+                setError("Failed to load missions from server. Please check connection settings.")
+            }
         }
     }
 

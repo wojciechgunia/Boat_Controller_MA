@@ -563,7 +563,12 @@ fun LoginForm(
                 modifier = Modifier.size(36.dp))
         }
     }
-    ErrorBubble(visible = mainVm.error, onClose = { mainVm.updateError(false) })
+    ErrorBubble(
+        visible = mainVm.error,
+        message = mainVm.errorMessage
+            ?: "An error occurred during connection. Check the connection parameters and login credentials.",
+        onClose = { mainVm.clearError() }
+    )
 }
 
 @Composable
@@ -1007,9 +1012,8 @@ fun validateUsername(username: String): String? {
 }
 
 fun validatePassword(password: String): String? {
-    val regex = Regex("^(?=.*[a-z])(?=.*[A-Z])(?=.*[@!#$%^&*?])(?=.*\\d).{8,40}$")
-    return if (!regex.matches(password)) {
-        "Password must be at least 8 characters long, including lowercase, uppercase, and digits (max. 40 characters)"
+    return if (password.length < 8) {
+        "Password must be at least 8 characters long"
     } else null
 }
 
