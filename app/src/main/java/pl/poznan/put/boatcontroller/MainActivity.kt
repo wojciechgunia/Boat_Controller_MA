@@ -719,6 +719,23 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Ustawienia socketu (łódka / ESP)
+            OutlinedTextField(
+                value = mainVm.socketIp,
+                onValueChange = { mainVm.updateSocketIP(it) },
+                label = { Text("Socket IP (boat)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = mainVm.serverSocketPort,
+                onValueChange = { mainVm.updateServerSocketPort(it) },
+                label = { Text("Socket Port") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Spacer(modifier = Modifier.height(50.dp))
 
             Button(

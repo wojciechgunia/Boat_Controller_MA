@@ -38,6 +38,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var serverPort by mutableStateOf("")
         private set
+    // Socket (łódka) – osobny IP/port niż REST
+    var socketIp by mutableStateOf("")
+        private set
     var serverSocketPort by mutableStateOf("9000")
         private set
     var username by mutableStateOf("")
@@ -206,6 +209,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             repo.get().collect { userData ->
                 serverIp = userData.ipAddress
                 serverPort = userData.port
+                // Domyślnie, jeśli socketIp puste, użyj IP serwera
+                if (socketIp.isBlank()) {
+                    socketIp = serverIp
+                }
                 if (userData.isRemembered) {
                     username = userData.login
                     password = userData.password
@@ -242,12 +249,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         serverIp = value
     }
 
+    fun updateSocketIP(value: String) {
+        socketIp = value
+    }
+
     fun updateIsRemembered(value: Boolean) {
         isRemembered = value
     }
 
     fun updateServerPort(value: String) {
         serverPort = value
+    }
+
+    fun updateServerSocketPort(value: String) {
+        serverSocketPort = value
     }
 
     fun updatePassword(value: String) {
@@ -458,8 +473,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun startSocketConnection() {
-        val port = serverSocketPort.toIntOrNull() ?: 9000
-        SocketRepository.start(serverIp, port)
+        // Jeśli socketIp nie jest ustawione – użyj IP REST-a
+        val ip = if (socketIp.isNotBlank()) socketIp else serverIp
+        val portStr = serverSocketPort.ifBlank { "9000" }
+        val port = portStr.toIntOrNull() ?: 9000
+        SocketRepository.start(ip, port)
     }
 
     private fun nextSNum(): Int = seq.incrementAndGet()
