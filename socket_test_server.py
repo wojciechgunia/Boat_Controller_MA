@@ -69,6 +69,18 @@ def parse_command(line: str):
                 log(f"⚠️  Błąd parsowania SM: {line}")
                 return None
 
+    if line.startswith("SA:") and line.endswith(":SA"):
+        parts = line.split(":")
+        if len(parts) >= 4:
+            try:
+                action = parts[1]
+                payload = parts[2] if len(parts) > 3 else ""
+                s_num = int(parts[-2])  # Przedostatni element to s_num
+                return ("SA", (action, payload, s_num))
+            except (ValueError, IndexError):
+                log(f"⚠️  Błąd parsowania SA: {line}")
+                return None
+
     log(f"⚠️  Nieznana komenda: {line}")
     return None
 
@@ -93,6 +105,16 @@ def handle_client(conn: socket.socket, addr):
     
     # Bateria (spada co sekundę o 1%, startowo 100%)
     battery_level = 100
+    
+    # Stan nawigacji waypointowej
+    is_paused = False
+    is_started = False
+    current_mode = "manual"  # "manual" lub "waypoint"
+    target_waypoint_lon = None
+    target_waypoint_lat = None
+    home_lat = None
+    home_lon = None
+    waypoint_reached_threshold = 0.0001  # ~11 metrów
     
     # Timestamps dla okresowych wiadomości
     last_pa_time = time.time()
@@ -161,6 +183,57 @@ def handle_client(conn: socket.socket, addr):
                             log(f"❌ Błąd wysyłania BIC do {addr}: {e}")
                             break
 
+                    elif cmd_type == "SA":
+                        action, payload, s_num = cmd_data
+                        log(f"✅ Otrzymano SetAction: action='{action}', payload='{payload}', s_num={s_num}")
+                        
+                        if action == "ST":
+                            # Set Start
+                            is_started = True
+                            is_paused = False
+                            if home_lat is None or home_lon is None:
+                                home_lat = lat
+                                home_lon = lon
+                            log(f"🚀 Start nawigacji (home: {home_lat:.6f}, {home_lon:.6f})")
+                            
+                        elif action == "SP":
+                            # Set Pause
+                            is_paused = True
+                            log(f"⏸️  Pauza nawigacji")
+                            
+                        elif action == "SW":
+                            # Set NextTo Waypoint - payload: "lon;lat"
+                            try:
+                                parts = payload.split(";")
+                                if len(parts) == 2:
+                                    target_waypoint_lon = float(parts[0])
+                                    target_waypoint_lat = float(parts[1])
+                                    # Jeśli speed = 0 i statek jest uruchomiony, ustaw domyślną prędkość
+                                    if speed == 0.0 and is_started and not is_paused:
+                                        speed = 10  # Domyślna prędkość
+                                        log(f"🚀 Automatycznie ustawiono prędkość na {speed:.2f} po otrzymaniu waypointa")
+                                    log(f"📍 Ustawiono cel waypoint: {target_waypoint_lon:.6f}, {target_waypoint_lat:.6f}")
+                            except (ValueError, IndexError):
+                                log(f"⚠️  Błąd parsowania waypointa z payload: {payload}")
+                                
+                        elif action == "GH":
+                            # Go Home
+                            if home_lat is not None and home_lon is not None:
+                                target_waypoint_lon = home_lon
+                                target_waypoint_lat = home_lat
+                                # Jeśli speed = 0 i statek jest uruchomiony, ustaw domyślną prędkość
+                                if speed == 0.0 and is_started and not is_paused:
+                                    speed = 10  # Domyślna prędkość
+                                    log(f"🚀 Automatycznie ustawiono prędkość na {speed:.2f} po otrzymaniu GH")
+                                log(f"🏠 Powrót do domu: {home_lon:.6f}, {home_lat:.6f}")
+                            else:
+                                log(f"⚠️  Brak zapisanej pozycji startowej (home)")
+                                
+                        elif action == "SM":
+                            # Set Mode - payload: "manual" lub "waypoint"
+                            current_mode = payload if payload in ["manual", "waypoint"] else "manual"
+                            log(f"🔄 Tryb zmieniony na: {current_mode}")
+
             except socket.timeout:
                 # Brak danych w tym ticku – to normalne
                 pass
@@ -171,16 +244,37 @@ def handle_client(conn: socket.socket, addr):
             if now - last_pa_time >= 1.0:
                 sequence_num += 1
                 
-                # Symulacja ruchu łódki (jeśli speed > 0, przesuwamy się)
-                if speed > 0:
-                    # Przesuwamy się w losowym kierunku
-                    lat += random.uniform(-0.0001, 0.0001) * speed / 10.0
-                    lon += random.uniform(-0.0001, 0.0001) * speed / 10.0
+                # Symulacja ruchu łódki
+                if speed > 0 and not is_paused:
+                    # Jeśli mamy cel waypoint i tryb waypoint
+                    if current_mode == "waypoint" and target_waypoint_lon is not None and target_waypoint_lat is not None:
+                        # Ruch w kierunku waypointa
+                        dx = target_waypoint_lon - lon
+                        dy = target_waypoint_lat - lat
+                        distance = (dx**2 + dy**2)**0.5
+                        
+                        if distance > waypoint_reached_threshold:
+                            # Ruch w kierunku celu - zwiększony współczynnik dla szybszego ruchu
+                            # speed jest w zakresie 0-10, więc mnożymy przez większy współczynnik
+                            step = min(0.001 * speed, distance * 0.2)  # 10x szybsze niż wcześniej
+                            lon += (dx / distance) * step
+                            lat += (dy / distance) * step
+                        else:
+                            # Waypoint osiągnięty - czekamy na kolejny waypoint (nie resetujemy speed)
+                            log(f"✅ Waypoint osiągnięty! ({target_waypoint_lon:.6f}, {target_waypoint_lat:.6f}) - czekam na kolejny")
+                            target_waypoint_lon = None
+                            target_waypoint_lat = None
+                            # NIE resetujemy speed - aplikacja wyśle kolejny waypoint i kontynuujemy
+                    else:
+                        # Normalny ruch (manual mode lub brak celu)
+                        lat += random.uniform(-0.0001, 0.0001) * speed / 10.0
+                        lon += random.uniform(-0.0001, 0.0001) * speed / 10.0
+                    
                     # Ograniczenia geograficzne (żeby nie uciec za daleko)
                     lat = max(52.0, min(53.0, lat))
                     lon = max(16.0, min(18.0, lon))
                 else:
-                    # Gdy speed = 0, możemy delikatnie dryfować
+                    # Gdy speed = 0 lub pauza, możemy delikatnie dryfować
                     lat += random.uniform(-0.00001, 0.00001)
                     lon += random.uniform(-0.00001, 0.00001)
 
@@ -267,9 +361,11 @@ def main():
     print(f"🖥️  Dla lokalnego testu użyj: localhost:{port}")
     print("=" * 60)
     print("Obsługiwane wiadomości:")
-    print("  📥 GBI, SS, SM (od aplikacji)")
+    print("  📥 GBI, SS, SM, SA (od aplikacji)")
+    print("    SA: ST (Start), SP (Pause), SW (Set Waypoint), GH (Go Home), SM (Set Mode)")
     print("  📤 BI, BIC, PA (co 1s), SI (co 2s), WI (przy baterii ≤15%)")
     print("  🔋 Bateria spada o 1% co sekundę, rozłączenie przy 0%")
+    print("  🧭 Tryb waypoint: automatyczna nawigacja do celów")
     print("=" * 60)
     log("✅ Serwer uruchomiony. Oczekiwanie na połączenia...")
     print("   Naciśnij Ctrl+C aby zatrzymać serwer\n")

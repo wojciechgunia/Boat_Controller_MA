@@ -30,9 +30,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -595,14 +597,29 @@ class ControllerActivity: ComponentActivity() {
                 val bitmap = getOrCreateWaypointBitmap(wp.no, context)
                 addWaypointBitmapToStyle(wp.no, bitmap, style)
             }
-            updateMapFeatures(style)
+            // Aktualizuj tylko waypointy i połączenia, NIE pozycję łódki
+            style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(viewModel.getConnectionLinesFeature()))
+            style.getSourceAs<GeoJsonSource>("waypoint-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(viewModel.getWaypointsFeature()))
         }
 
         LaunchedEffect(poi) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
-            updateMapFeatures(style)
+            // Aktualizuj tylko POI, NIE pozycję łódki
+            style.getSourceAs<GeoJsonSource>("poi-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(viewModel.getPoiFeature()))
+        }
+        
+        // Osobny LaunchedEffect dla pozycji łódki - aktualizuje się tylko gdy pozycja się zmienia
+        LaunchedEffect(viewModel.shipPosition.value) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+            
+            style.getSourceAs<GeoJsonSource>("ship-source")
+                ?.setGeoJson(viewModel.getShipFeature())
         }
 
         LaunchedEffect(layersMode, map?.style) {
@@ -825,10 +842,109 @@ class ControllerActivity: ComponentActivity() {
     @Composable
     fun SensorsTab(viewModel: ControllerViewModel) {
         val data = viewModel.sensorsData
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "Magnetometr: ${data.magnetic}", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
-                Text(text = "Głębokość: ${data.depth} m", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                // Sekcja: Akcelerometr
+                item {
+                    SensorSection(
+                        title = "Akcelerometr (g)",
+                        values = listOf(
+                            "X: ${String.format("%.2f", data.accelX)}",
+                            "Y: ${String.format("%.2f", data.accelY)}",
+                            "Z: ${String.format("%.2f", data.accelZ)}"
+                        )
+                    )
+                }
+                
+                // Sekcja: Żyroskop
+                item {
+                    SensorSection(
+                        title = "Żyroskop (deg/s)",
+                        values = listOf(
+                            "X: ${String.format("%.2f", data.gyroX)}",
+                            "Y: ${String.format("%.2f", data.gyroY)}",
+                            "Z: ${String.format("%.2f", data.gyroZ)}"
+                        )
+                    )
+                }
+                
+                // Sekcja: Magnetometr
+                item {
+                    SensorSection(
+                        title = "Magnetometr (µT)",
+                        values = listOf(
+                            "X: ${String.format("%.2f", data.magX)}",
+                            "Y: ${String.format("%.2f", data.magY)}",
+                            "Z: ${String.format("%.2f", data.magZ)}"
+                        )
+                    )
+                }
+                
+                // Sekcja: Kąty
+                item {
+                    SensorSection(
+                        title = "Kąty (deg)",
+                        values = listOf(
+                            "X: ${String.format("%.2f", data.angleX)}",
+                            "Y: ${String.format("%.2f", data.angleY)}",
+                            "Z: ${String.format("%.2f", data.angleZ)}"
+                        )
+                    )
+                }
+                
+                // Sekcja: Głębokość
+                item {
+                    SensorSection(
+                        title = "Głębokość",
+                        values = listOf(
+                            "${String.format("%.2f", data.depth)} m"
+                        )
+                    )
+                }
+            }
+        }
+    }
+    
+    @Composable
+    fun SensorSection(
+        title: String,
+        values: List<String>
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                values.forEach { value ->
+                    Text(
+                        text = value,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

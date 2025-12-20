@@ -153,13 +153,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         "BIC: ${event.name}/${event.captain}/${event.mission}"
                     }
-                    is SocketEvent.PositionActualisation -> "PA: ${event.lat},${event.lon} speed=${event.speed} sNum=${event.sNum}"
-                    is SocketEvent.SensorInformation -> "SI: mag=${event.magnetic} depth=${event.depth}"
-                    is SocketEvent.WarningInformation -> "WI: ${event.infoCode}"
                     is SocketEvent.LostInformation -> "LI: sNum=${event.sNum}"
+                    // MainViewModel obsługuje tylko BI, BIC, LI
+                    // PA, SI, SS, SM, SA, WI są obsługiwane w ControllerViewModel/WaypointViewModel
+                    else -> null // Ignoruj inne eventy
                 }
-                lastSocketResponse = eventStr
-                socketMessages = (listOf("📥 $eventStr") + socketMessages).take(10) // Ostatnie 10 wiadomości
+                if (eventStr != null) {
+                    lastSocketResponse = eventStr
+                    socketMessages = (listOf("📥 $eventStr") + socketMessages).take(10) // Ostatnie 10 wiadomości
+                }
             }
         }
     }
@@ -485,39 +487,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun sendSetMission(mission: String) {
         viewModelScope.launch {
             SocketRepository.send(SocketCommand.SetMission(mission, nextSNum()))
-        }
-    }
-    
-    // Metody testowe socketu
-    fun testSocketConnection() {
-        viewModelScope.launch {
-            if (isSocketConnected) {
-                lastSocketResponse = "Testing... (sending GBI)"
-                socketMessages = listOf("📤 GBI:GBI") + socketMessages.take(9)
-                SocketRepository.send(SocketCommand.GetBoatInformation)
-            }
-        }
-    }
-    
-    fun testSetSpeed(left: Double = 0.5, right: Double = 0.5) {
-        viewModelScope.launch {
-            if (isSocketConnected) {
-                val sNum = nextSNum()
-                lastSocketResponse = "Testing SetSpeed: left=$left, right=$right, sNum=$sNum"
-                socketMessages = listOf("📤 SS:$left:$right:$sNum:SS") + socketMessages.take(9)
-                SocketRepository.send(SocketCommand.SetSpeed(left, right, sNum))
-            }
-        }
-    }
-    
-    fun testSetAction(action: String, payload: String = "") {
-        viewModelScope.launch {
-            if (isSocketConnected) {
-                val sNum = nextSNum()
-                lastSocketResponse = "Testing SetAction: action=$action, payload=$payload, sNum=$sNum"
-                socketMessages = listOf("📤 SA:$action:$payload:$sNum:SA") + socketMessages.take(9)
-                SocketRepository.send(SocketCommand.SetAction(action, payload, sNum))
-            }
         }
     }
 }

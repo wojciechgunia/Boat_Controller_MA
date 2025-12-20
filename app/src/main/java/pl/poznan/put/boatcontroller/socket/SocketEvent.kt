@@ -12,7 +12,23 @@ sealed class SocketEvent {
     ) : SocketEvent()
 
     data class SensorInformation(
-        val magnetic: Double,
+        // Akcelerometr (g)
+        val accelX: Double,
+        val accelY: Double,
+        val accelZ: Double,
+        // Żyroskop (deg/s)
+        val gyroX: Double,
+        val gyroY: Double,
+        val gyroZ: Double,
+        // Magnetometr (µT)
+        val magX: Double,
+        val magY: Double,
+        val magZ: Double,
+        // Kąty (deg)
+        val angleX: Double,
+        val angleY: Double,
+        val angleZ: Double,
+        // Głębokość (m)
         val depth: Double
     ) : SocketEvent()
 

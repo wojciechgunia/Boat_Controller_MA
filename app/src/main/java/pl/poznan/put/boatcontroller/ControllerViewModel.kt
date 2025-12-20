@@ -95,7 +95,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     var sonarData by mutableStateOf(ByteArray(0))
         private set
 
-    var sensorsData by mutableStateOf(ShipSensorsData(0.0, 0.0))
+    var sensorsData by mutableStateOf(ShipSensorsData())
         private set
 
     var cameraFeed by mutableStateOf(ByteArray(0))
@@ -306,12 +306,24 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             SocketRepository.events.collectLatest { event ->
                 when (event) {
                     is SocketEvent.PositionActualisation -> {
+                        Log.d("ControllerViewModel", "📍 PA received: lat=${event.lat}, lon=${event.lon}, speed=${event.speed} m/s, sNum=${event.sNum}")
                         mapUpdate(event.lat, event.lon, event.speed.toFloat())
                     }
                     is SocketEvent.SensorInformation -> {
                         updateSensorsData(
                             ShipSensorsData(
-                                magnetic = event.magnetic,
+                                accelX = event.accelX,
+                                accelY = event.accelY,
+                                accelZ = event.accelZ,
+                                gyroX = event.gyroX,
+                                gyroY = event.gyroY,
+                                gyroZ = event.gyroZ,
+                                magX = event.magX,
+                                magY = event.magY,
+                                magZ = event.magZ,
+                                angleX = event.angleX,
+                                angleY = event.angleY,
+                                angleZ = event.angleZ,
                                 depth = event.depth
                             )
                         )
@@ -338,6 +350,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             SocketRepository.connectionState.collectLatest { connected ->
                 if (connected) {
+                    // Wysyłamy tryb manual przy połączeniu
+                    sendAction("SM", "manual")
+                    
                     // Po każdym ponownym zestawieniu połączenia wyślij aktualne moce silników,
                     // żeby łódka (lub serwer testowy) od razu dostała wartości SS
                     // nawet jeśli użytkownik nic nie przesunie po reconnect.

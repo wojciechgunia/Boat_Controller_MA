@@ -26,9 +26,20 @@ object SocketRepository {
 
         CoroutineScope(Dispatchers.IO).launch {
             service.incomingRaw.collect { raw ->
+                Log.d("SocketRepository", "📥 Raw message received: $raw")
                 val event = SocketParser.parse(raw)
                 if (event != null) {
-                    Log.d("SocketRepository", "📨 Parsed event: ${event::class.simpleName}")
+                    when (event) {
+                        is SocketEvent.PositionActualisation -> {
+                            Log.d("SocketRepository", "📍 Parsed PA: lat=${event.lat}, lon=${event.lon}, speed=${event.speed} m/s, sNum=${event.sNum}")
+                        }
+                        is SocketEvent.SensorInformation -> {
+                            Log.d("SocketRepository", "📊 Parsed SI: accel=(${event.accelX},${event.accelY},${event.accelZ}), gyro=(${event.gyroX},${event.gyroY},${event.gyroZ}), mag=(${event.magX},${event.magY},${event.magZ}), angles=(${event.angleX},${event.angleY},${event.angleZ}), depth=${event.depth}")
+                        }
+                        else -> {
+                            Log.d("SocketRepository", "📨 Parsed event: ${event::class.simpleName}")
+                        }
+                    }
                     handleIncomingEvent(event)
                 } else {
                     Log.w("SocketRepository", "⚠️ Failed to parse: $raw")

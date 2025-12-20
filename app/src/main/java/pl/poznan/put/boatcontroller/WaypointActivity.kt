@@ -20,7 +20,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -244,8 +243,7 @@ class WaypointActivity : ComponentActivity() {
                                 drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
                                 mapMode = MapMode.Ship.DefaultMove,
                                 onClick = {
-                                    waypointVm.toggleMapEditMode(MapMode.Ship.DefaultMove)
-//                                    waypointVm.toggleSimulation()
+                                    waypointVm.toggleStartStop()
                                 },
                             )
                             IconWithEffectButton(
@@ -434,14 +432,29 @@ class WaypointActivity : ComponentActivity() {
                 val bitmap = getOrCreateWaypointBitmap(wp.no, context)
                 addWaypointBitmapToStyle(wp.no, bitmap, style)
             }
-            updateMapFeatures(style)
+            // Aktualizuj tylko waypointy i połączenia, NIE pozycję łódki
+            style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getConnectionLinesFeature()))
+            style.getSourceAs<GeoJsonSource>("waypoint-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getWaypointsFeature()))
+        }
+        
+        // Osobny LaunchedEffect dla pozycji łódki - aktualizuje się tylko gdy pozycja się zmienia
+        LaunchedEffect(waypointVm.shipPosition.value) {
+            val mapboxMap = map ?: return@LaunchedEffect
+            val style = mapboxMap.style ?: return@LaunchedEffect
+            
+            style.getSourceAs<GeoJsonSource>("ship-source")
+                ?.setGeoJson(waypointVm.getShipFeature())
         }
 
         LaunchedEffect(poi) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
-            updateMapFeatures(style)
+            // Aktualizuj tylko POI, NIE pozycję łódki
+            style.getSourceAs<GeoJsonSource>("poi-source")
+                ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getPoiFeature()))
         }
 
         LaunchedEffect(poiToggle, map?.style) {

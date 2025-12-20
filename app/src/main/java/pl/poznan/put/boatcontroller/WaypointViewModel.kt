@@ -13,10 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import org.maplibre.android.maps.MapLibreMap
@@ -82,10 +79,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _isShipMoving = mutableStateOf(false)
     val isShipMoving: MutableState<Boolean> = _isShipMoving
-    private var shipMovingJob: Job? = null
-
-    private val _shouldFinish = MutableLiveData<Boolean>(false)
-    val shouldFinish: LiveData<Boolean> = _shouldFinish
+    
+    // Nawigacja waypointowa
+    private var currentWaypointIndex = -1
+    private var homePosition: ShipPosition? = null
+    private var isGoingHome = false  // Flaga czy wracamy do domu
+    private var lastCompletedWaypoint: WaypointObject? = null  // Ostatni osiągnięty waypoint (zapamiętany po zakończeniu trasy)
+    private val waypointReachedThreshold = 0.0001 // ~11 metrów
 
     private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
     val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
@@ -98,6 +98,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     init {
         observeSocket()
         loadSavedMission()
+        // Wysyłamy tryb waypoint przy starcie ViewModel
+        sendMode("waypoint")
     }
     
     private fun loadSavedMission() {
@@ -120,12 +122,82 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             SocketRepository.events.collectLatest { event ->
                 when (event) {
                     is SocketEvent.PositionActualisation -> {
-                        _shipPosition.value = ShipPosition(event.lat, event.lon)
+                        val newPosition = ShipPosition(event.lat, event.lon)
+                        _shipPosition.value = newPosition
+                        
+                        // Sprawdź czy osiągnięto dom (jeśli wracamy do domu)
+                        if (_isShipMoving.value && isGoingHome && homePosition != null) {
+                            val distanceToHome = calculateDistance(
+                                newPosition.lat, newPosition.lon,
+                                homePosition!!.lat, homePosition!!.lon
+                            )
+                            
+                            if (distanceToHome < waypointReachedThreshold) {
+                                Log.d("WaypointViewModel", "🏠 Dom osiągnięty! Zatrzymuję statek.")
+                                // Zatrzymaj statek
+                                sendAction("SP", "")
+                                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, nextSNum()))
+                                _isShipMoving.value = false
+                                isGoingHome = false
+                            }
+                        }
+                        
+                        // Sprawdź czy osiągnięto ostatni zapamiętany waypoint (gdy waypointy są puste)
+                        if (_isShipMoving.value && !isGoingHome && _waypointPositions.isEmpty() && lastCompletedWaypoint != null) {
+                            val distance = calculateDistance(
+                                newPosition.lat, newPosition.lon,
+                                lastCompletedWaypoint!!.lat, lastCompletedWaypoint!!.lon
+                            )
+                            
+                            if (distance < waypointReachedThreshold) {
+                                Log.d("WaypointViewModel", "Ostatni zapamiętany waypoint osiągnięty! Zatrzymuję statek.")
+                                // Zatrzymaj statek
+                                sendAction("SP", "")
+                                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, nextSNum()))
+                                _isShipMoving.value = false
+                                lastCompletedWaypoint = null  // Wyczyść zapamiętany waypoint
+                            }
+                        }
+                        
+                        // Sprawdź czy osiągnięto waypoint (tylko w trybie waypoint i gdy statek się porusza, ale NIE gdy wracamy do domu)
+                        if (_isShipMoving.value && !isGoingHome && currentWaypointIndex >= 0 && _waypointPositions.isNotEmpty()) {
+                            // Sortuj waypointy przed użyciem
+                            val sortedWaypoints = _waypointPositions.sortedBy { it.no }
+                            
+                            if (currentWaypointIndex < sortedWaypoints.size) {
+                                val targetWp = sortedWaypoints[currentWaypointIndex]
+                                val distance = calculateDistance(
+                                    newPosition.lat, newPosition.lon,
+                                    targetWp.lat, targetWp.lon
+                                )
+                                
+                                if (distance < waypointReachedThreshold) {
+                                    Log.d("WaypointViewModel", "Waypoint ${targetWp.no} osiągnięty! Przechodzę do następnego.")
+                                    // Przejdź do następnego waypointa
+                                    currentWaypointIndex++
+                                    if (currentWaypointIndex < sortedWaypoints.size) {
+                                        val nextWp = sortedWaypoints[currentWaypointIndex]
+                                        sendAction("SW", "${nextWp.lon};${nextWp.lat}")
+                                        Log.d("WaypointViewModel", "Wysyłam kolejny waypoint: ${nextWp.no} (${nextWp.lon}, ${nextWp.lat})")
+                                    } else {
+                                        // Wszystkie waypointy osiągnięte - zapamiętaj ostatni i usuń wszystkie waypointy
+                                        val lastWp = sortedWaypoints.lastOrNull()
+                                        if (lastWp != null) {
+                                            lastCompletedWaypoint = lastWp
+                                            Log.d("WaypointViewModel", "Wszystkie waypointy osiągnięte! Zapamiętano ostatni: ${lastWp.no}")
+                                        }
+                                        
+                                        // Usuń wszystkie waypointy z backendu i z listy
+                                        clearAllWaypoints()
+                                        
+                                        // Zatrzymaj statek
+                                        toggleStartStop()
+                                    }
+                                }
+                            }
+                        }
                     }
-                    is SocketEvent.SensorInformation -> {
-                        // Brak dedykowanego modelu czujników w tym ViewModelu – na razie log
-                        Log.d("Socket", "Sensors mag=${event.magnetic} depth=${event.depth}")
-                    }
+                    // WaypointViewModel NIE obsługuje SI - tylko ControllerViewModel
                     is SocketEvent.BoatInformationChange -> {
                         Log.d("Socket", "Boat info change: ${event.name}/${event.captain}/${event.mission}")
                     }
@@ -138,9 +210,17 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     is SocketEvent.LostInformation -> {
                         Log.d("Socket", "Lost info ack for sNum=${event.sNum}")
                     }
+                    else -> null
                 }
             }
         }
+    }
+    
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        // Prosta odległość euklidesowa w stopniach (dla małych odległości)
+        val dlat = lat2 - lat1
+        val dlon = lon2 - lon1
+        return Math.sqrt(dlat * dlat + dlon * dlon)
     }
 
     fun initModel() {
@@ -196,16 +276,124 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun goToHome() {
-        toggleShipDirection()
-        sendAction("GH", "")
-    }
-
-    fun toggleShipDirection() {
-        _currentShipDirection.value = when (_currentShipDirection.value) {
-            ShipDirection.DEFAULT -> ShipDirection.REVERSE
-            ShipDirection.REVERSE -> ShipDirection.DEFAULT
+        viewModelScope.launch {
+            // Zapamiętaj pozycję startową jeśli nie jest zapisana
+            if (homePosition == null) {
+                homePosition = _shipPosition.value
+                Log.d("WaypointViewModel", "Zapisano pozycję startową jako home: ${homePosition?.lat}, ${homePosition?.lon}")
+            }
+            
+            // Wyślij GH (Go Home)
+            sendAction("GH", "")
+            
+            // Ustaw flagę że wracamy do domu
+            isGoingHome = true
+            currentWaypointIndex = -1  // Reset waypoint index
+            
+            // Jeśli statek nie jest uruchomiony, uruchom go
+            if (!_isShipMoving.value) {
+                // Wyślij ST (Start)
+                sendAction("ST", "")
+                
+                // Wyślij SS (Set Speed) z prędkością, żeby łódka zaczęła płynąć
+                SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                
+                _isShipMoving.value = true
+                Log.d("WaypointViewModel", "🏠 Powrót do domu - uruchomiono statek")
+            } else {
+                // Statek już płynie - upewnij się że ma prędkość
+                SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                Log.d("WaypointViewModel", "🏠 Powrót do domu - kontynuuję z prędkością")
+            }
         }
     }
+    
+    fun toggleStartStop() {
+        viewModelScope.launch {
+            if (!_isShipMoving.value) {
+                // Start
+                if (isGoingHome) {
+                    // Jeśli wracamy do domu, kontynuuj powrót
+                    if (homePosition == null) {
+                        Log.w("WaypointViewModel", "Brak zapisanej pozycji startowej - nie można wrócić do domu")
+                        return@launch
+                    }
+                    
+                    // Wyślij ST (Start)
+                    sendAction("ST", "")
+                    
+                    // Wyślij GH (Go Home) ponownie, żeby upewnić się że cel jest ustawiony
+                    sendAction("GH", "")
+                    
+                    // Wyślij SS (Set Speed) z prędkością
+                    SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                    
+                    _isShipMoving.value = true
+                    Log.d("WaypointViewModel", "🏠 Wznowiono powrót do domu")
+                } else {
+                    // Normalna nawigacja waypointowa
+                    if (_waypointPositions.isEmpty()) {
+                        // Jeśli waypointy są puste, ale mamy zapamiętany ostatni waypoint (po powrocie do domu)
+                        if (lastCompletedWaypoint != null) {
+                            // Zapisz pozycję startową jako home
+                            if (homePosition == null) {
+                                homePosition = _shipPosition.value
+                            }
+                            isGoingHome = false  // Reset flagi
+                            
+                            // Wyślij ST (Start)
+                            sendAction("ST", "")
+                            
+                            // Wyślij SS (Set Speed) z domyślną prędkością
+                            SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                            
+                            // Wyślij ostatni waypoint jako cel
+                            sendAction("SW", "${lastCompletedWaypoint!!.lon};${lastCompletedWaypoint!!.lat}")
+                            
+                            _isShipMoving.value = true
+                            Log.d("WaypointViewModel", "🚀 Start nawigacji do ostatniego waypointa (${lastCompletedWaypoint!!.lon}, ${lastCompletedWaypoint!!.lat})")
+                        } else {
+                            Log.w("WaypointViewModel", "Brak waypointów i brak zapamiętanego ostatniego waypointa - nie można rozpocząć nawigacji")
+                            return@launch
+                        }
+                    } else {
+                        // Normalna nawigacja z listą waypointów
+                        // Zapisz pozycję startową jako home
+                        homePosition = _shipPosition.value
+                        isGoingHome = false  // Reset flagi
+                        lastCompletedWaypoint = null  // Reset zapamiętanego waypointa
+                        
+                        // Sortuj waypointy po numerze (no) przed użyciem
+                        val sortedWaypoints = _waypointPositions.sortedBy { it.no }
+                        
+                        // Wyślij ST (Start)
+                        sendAction("ST", "")
+                        
+                        // Wyślij SS (Set Speed) z domyślną prędkością, żeby łódka zaczęła płynąć
+                        // Używamy 0.5 dla obu silników (średnia prędkość)
+                        SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                        
+                        // Wyślij pierwszy waypoint
+                        currentWaypointIndex = 0
+                        val firstWp = sortedWaypoints[0]
+                        sendAction("SW", "${firstWp.lon};${firstWp.lat}")
+                        
+                        _isShipMoving.value = true
+                        Log.d("WaypointViewModel", "🚀 Start nawigacji do waypointa ${firstWp.no} (${firstWp.lon}, ${firstWp.lat})")
+                    }
+                }
+            } else {
+                // Stop/Pause
+                sendAction("SP", "")
+                // Zatrzymaj silniki (speed = 0)
+                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, nextSNum()))
+                _isShipMoving.value = false
+                Log.d("WaypointViewModel", "⏸️  Pauza nawigacji")
+            }
+        }
+    }
+
+
 
     fun getNextAvailableWaypointNo(): Int {
         val usedIds = _waypointPositions.map { it.no }.toSet()
@@ -238,6 +426,37 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 sendAction("SW", "${lon};${lat}")
             } catch (e: Exception) {
                 Log.e("API", "Błąd dodawania waypointu", e)
+            }
+        }
+    }
+
+    private fun clearAllWaypoints() {
+        viewModelScope.launch {
+            try {
+                val response = backendApi?.getWaypointsList(missionId)
+                if (response == null || !response.isSuccessful) {
+                    Log.e("API", "Nie udało się pobrać waypointów do usunięcia")
+                    return@launch
+                }
+
+                val waypoints = response.body()?.toMutableList() ?: mutableListOf()
+                
+                // Usuń wszystkie waypointy z backendu
+                waypoints.forEach { wp ->
+                    try {
+                        backendApi?.deleteWaypoint(wp.id)
+                        Log.d("WaypointViewModel", "Usunięto waypoint ${wp.no} z backendu")
+                    } catch (e: Exception) {
+                        Log.e("API", "Błąd usuwania waypointu ${wp.no}", e)
+                    }
+                }
+
+                // Wyczyść listę waypointów
+                _waypointPositions.clear()
+                
+                Log.d("WaypointViewModel", "Wszystkie waypointy zostały usunięte")
+            } catch (e: Exception) {
+                Log.e("API", "Błąd usuwania wszystkich waypointów", e)
             }
         }
     }
