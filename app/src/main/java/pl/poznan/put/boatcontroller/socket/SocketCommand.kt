@@ -6,6 +6,7 @@ sealed class SocketCommand {
     data class SetSpeed(
         val left: Double,
         val right: Double,
+        val winch: Int, // 0 = góra, 1 = wyłączony, 2 = dół
         val sNum: Int
     ) : SocketCommand()
 

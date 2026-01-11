@@ -98,6 +98,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var cameraErrorMessage by mutableStateOf<String?>(null)
         private set
+    
+    // Stan silnika zwijarki: 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
+    var winchState by mutableIntStateOf(1) // Domyślnie wyłączony
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -267,6 +270,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                         SocketCommand.SetSpeed(
                             left = leftEnginePower.toDouble(),
                             right = rightEnginePower.toDouble(),
+                            winch = winchState,
                             sNum = nextSNum()
                         )
                     )
@@ -280,13 +284,25 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     fun sendSpeed(left: Double, right: Double) {
         viewModelScope.launch {
             currentSpeed = ((left + right) / 2.0).toFloat()
-            SocketRepository.send(SocketCommand.SetSpeed(left, right, nextSNum()))
+            SocketRepository.send(SocketCommand.SetSpeed(left, right, winchState, nextSNum()))
         }
     }
 
     fun sendAction(action: String, payload: String = "") {
         viewModelScope.launch {
             SocketRepository.send(SocketCommand.SetAction(action, payload, nextSNum()))
+        }
+    }
+    
+    /**
+     * Zmienia stan zwijarki i wysyła komendę SS przez socket tylko jeśli stan się zmienił.
+     * @param newState 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
+     */
+    fun updateWinchState(newState: Int) {
+        if (winchState != newState) {
+            winchState = newState
+            // Wyślij SS z aktualnymi wartościami silników i nowym stanem zwijarki
+            sendSpeed(leftEnginePower.toDouble(), rightEnginePower.toDouble())
         }
     }
 

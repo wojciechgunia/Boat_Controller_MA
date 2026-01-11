@@ -120,7 +120,7 @@ object SocketRepository {
                 "GBI:GBI"
 
             is SocketCommand.SetSpeed ->
-                "SS:${cmd.left}:${cmd.right}:${cmd.sNum}:SS"
+                "SS:${cmd.left}:${cmd.right}:${cmd.winch}:${cmd.sNum}:SS"
 
             is SocketCommand.SetAction ->
                 "SA:${cmd.action}:${cmd.payload}:${cmd.sNum}:SA"

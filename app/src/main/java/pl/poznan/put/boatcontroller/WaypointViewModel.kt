@@ -136,7 +136,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                                 Log.d("WaypointViewModel", "🏠 Dom osiągnięty! Zatrzymuję statek.")
                                 // Zatrzymaj statek
                                 sendAction("SP", "")
-                                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, nextSNum()))
+                                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, 1, nextSNum())) // winch = 1 (stop)
                                 _isShipMoving.value = false
                                 isGoingHome = false
                             }
@@ -153,7 +153,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                                 Log.d("WaypointViewModel", "Ostatni zapamiętany waypoint osiągnięty! Zatrzymuję statek.")
                                 // Zatrzymaj statek
                                 sendAction("SP", "")
-                                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, nextSNum()))
+                                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, 1, nextSNum())) // winch = 1 (stop)
                                 _isShipMoving.value = false
                                 lastCompletedWaypoint = null  // Wyczyść zapamiętany waypoint
                             }
@@ -296,13 +296,13 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 sendAction("ST", "")
                 
                 // Wyślij SS (Set Speed) z prędkością, żeby łódka zaczęła płynąć
-                SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, 1, nextSNum())) // winch = 1 (stop)
                 
                 _isShipMoving.value = true
                 Log.d("WaypointViewModel", "🏠 Powrót do domu - uruchomiono statek")
             } else {
                 // Statek już płynie - upewnij się że ma prędkość
-                SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, 1, nextSNum())) // winch = 1 (stop)
                 Log.d("WaypointViewModel", "🏠 Powrót do domu - kontynuuję z prędkością")
             }
         }
@@ -326,7 +326,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     sendAction("GH", "")
                     
                     // Wyślij SS (Set Speed) z prędkością
-                    SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                    SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, 1, nextSNum())) // winch = 1 (stop)
                     
                     _isShipMoving.value = true
                     Log.d("WaypointViewModel", "🏠 Wznowiono powrót do domu")
@@ -345,7 +345,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                             sendAction("ST", "")
                             
                             // Wyślij SS (Set Speed) z domyślną prędkością
-                            SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                            SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, 1, nextSNum())) // winch = 1 (stop)
                             
                             // Wyślij ostatni waypoint jako cel
                             sendAction("SW", "${lastCompletedWaypoint!!.lon};${lastCompletedWaypoint!!.lat}")
@@ -371,7 +371,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                         
                         // Wyślij SS (Set Speed) z domyślną prędkością, żeby łódka zaczęła płynąć
                         // Używamy 0.5 dla obu silników (średnia prędkość)
-                        SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, nextSNum()))
+                        SocketRepository.send(SocketCommand.SetSpeed(0.5, 0.5, 1, nextSNum())) // winch = 1 (stop)
                         
                         // Wyślij pierwszy waypoint
                         currentWaypointIndex = 0
@@ -386,7 +386,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 // Stop/Pause
                 sendAction("SP", "")
                 // Zatrzymaj silniki (speed = 0)
-                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, nextSNum()))
+                SocketRepository.send(SocketCommand.SetSpeed(0.0, 0.0, 1, nextSNum())) // winch = 1 (stop)
                 _isShipMoving.value = false
                 Log.d("WaypointViewModel", "⏸️  Pauza nawigacji")
             }

@@ -38,6 +38,9 @@ unsigned long last_motor_seq = 0;
 int motor_left_value = 5;
 int motor_right_value = 5;
 
+// Stan silnika zwijarki: 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
+int winch_state = 1; // Domyślnie wyłączony
+
 // Ostatnie dane z czujników do PA/LI/SI
 struct LastSensorData {
   float latitude;
@@ -335,20 +338,23 @@ void handle_tcp_command(const String& line) {
   String cmd = line.substring(0, firstColon);
 
   if (cmd == "SS") {
-    // Format: SS:left:right:sNum:SS
-    // Android wysyła left/right jako double (0.0–1.0)
+    // Format: SS:left:right:winch:sNum:SS
+    // Android wysyła left/right jako double (0.0–1.0), winch jako int (0-2)
     int p1 = firstColon + 1;
     int p2 = line.indexOf(':', p1);
     int p3 = p2 >= 0 ? line.indexOf(':', p2 + 1) : -1;
+    int p4 = p3 >= 0 ? line.indexOf(':', p3 + 1) : -1;
 
-    if (p2 < 0 || p3 < 0) return;
+    if (p2 < 0 || p3 < 0 || p4 < 0) return;
 
     String leftStr = line.substring(p1, p2);
     String rightStr = line.substring(p2 + 1, p3);
-    // sNum jest między p3 a kolejnym ':', ale tutaj go nie wykorzystujemy
+    String winchStr = line.substring(p3 + 1, p4);
+    // sNum jest między p4 a kolejnym ':', ale tutaj go nie wykorzystujemy
 
     double left = leftStr.toDouble();
     double right = rightStr.toDouble();
+    int winch = winchStr.toInt();
 
     // Mapowanie: jeśli wartości w [0,1] → skala 1–10
     auto mapSpeed = [](double v) -> int {
@@ -367,24 +373,35 @@ void handle_tcp_command(const String& line) {
 
     motor_left_value = mapSpeed(left);
     motor_right_value = mapSpeed(right);
+    
+    // Aktualizuj stan zwijarki tylko jeśli się zmienił
+    if (winch >= 0 && winch <= 2 && winch_state != winch) {
+      winch_state = winch;
+      Serial.print("[ODEBRANO][TCP][SS] winch state zmieniony na: ");
+      Serial.print(winch_state);
+      Serial.print(" (");
+      if (winch_state == 0) Serial.print("UP");
+      else if (winch_state == 1) Serial.print("STOP");
+      else if (winch_state == 2) Serial.print("DOWN");
+      Serial.println(")");
+    }
 
     Serial.print("[ODEBRANO][TCP][SS] left=");
     Serial.print(motor_left_value);
     Serial.print(", right=");
     Serial.print(motor_right_value);
+    Serial.print(", winch=");
+    Serial.print(winch_state);
     Serial.println(" | Przekazuję przez LoRa...");
     
     // Odpowiedź może być poprzez kolejne PA z LoRa
   } else if (cmd == "SA") {
     // Set Action – SA:action:payload:sNum:SA
-    int p1 = firstColon + 1;
-    int p2 = line.indexOf(':', p1);
-    String action = p2 > 0 ? line.substring(p1, p2) : "";
-    Serial.print("[ODEBRANO][TCP][SA] action=");
-    Serial.print(action);
+    // UWAGA: Zwijarka jest teraz w SS, nie w SA
+    Serial.print("[ODEBRANO][TCP][SA] ");
+    Serial.print(line);
     Serial.println(" | Przekazuję przez LoRa...");
     
-    // Wyślij przez LoRa
     LoRa.beginPacket();
     LoRa.print(line);
     LoRa.endPacket();
@@ -429,11 +446,13 @@ void handle_tcp_command(const String& line) {
 void send_motor_control() {
   sequence_counter++;
   
-  // Format: SS:left:right:s_num:SS
+  // Format: SS:left:right:winch:s_num:SS
   String message = "SS:";
   message += String(motor_left_value);
   message += ":";
   message += String(motor_right_value);
+  message += ":";
+  message += String(winch_state);
   message += ":";
   message += String(sequence_counter);
   message += ":SS";
@@ -449,7 +468,13 @@ void send_motor_control() {
   Serial.print(motor_left_value);
   Serial.print(", right=");
   Serial.print(motor_right_value);
-  Serial.print(", seq=");
+  Serial.print(", winch=");
+  Serial.print(winch_state);
+  Serial.print(" (");
+  if (winch_state == 0) Serial.print("UP");
+  else if (winch_state == 1) Serial.print("STOP");
+  else if (winch_state == 2) Serial.print("DOWN");
+  Serial.print("), seq=");
   Serial.print(sequence_counter);
   Serial.print(" | Wysłano łącznie: ");
   Serial.println(packets_sent);

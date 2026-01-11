@@ -35,6 +35,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +47,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -826,6 +830,8 @@ class ControllerActivity: ComponentActivity() {
     @Composable
     fun SensorsTab(viewModel: ControllerViewModel) {
         val data = viewModel.sensorsData
+        val winchState = viewModel.winchState
+        
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -836,6 +842,24 @@ class ControllerActivity: ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(0.dp)
             ) {
+                // Przełącznik trójstopniowy: Silnik zwijarki
+                item {
+                    WinchControlSwitch(
+                        currentState = winchState,
+                        onStateChange = { viewModel.updateWinchState(it) }
+                    )
+                }
+                
+                // Sekcja: Głębokość (przeniesiona wyżej)
+                item {
+                    SensorSection(
+                        title = "Głębokość",
+                        values = listOf(
+                            "${String.format("%.2f", data.depth)} m"
+                        )
+                    )
+                }
+                
                 // Sekcja: Akcelerometr
                 item {
                     SensorSection(
@@ -883,15 +907,163 @@ class ControllerActivity: ComponentActivity() {
                         )
                     )
                 }
-                
-                // Sekcja: Głębokość
-                item {
-                    SensorSection(
-                        title = "Głębokość",
-                        values = listOf(
-                            "${String.format("%.2f", data.depth)} m"
+            }
+        }
+    }
+    
+    @Composable
+    fun WinchControlSwitch(
+        currentState: Int, // 0 = góra, 1 = wyłączony, 2 = dół
+        onStateChange: (Int) -> Unit
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Silnik zwijarki",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outline,
+                        RoundedCornerShape(8.dp)
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                // Przycisk: Góra (lewo)
+                Button(
+                    onClick = { onStateChange(0) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentState == 0) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(
+                        topStart = 8.dp,
+                        bottomStart = 8.dp,
+                        topEnd = 0.dp,
+                        bottomEnd = 0.dp
+                    ),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowUpward,
+                            contentDescription = "Góra",
+                            modifier = Modifier.size(24.dp),
+                            tint = if (currentState == 0) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
                         )
-                    )
+                        Text(
+                            text = "Góra",
+                            fontSize = 12.sp,
+                            color = if (currentState == 0) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                
+                // Przycisk: Wyłączony (środek)
+                Button(
+                    onClick = { onStateChange(1) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentState == 1) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(0.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.stop),
+                            contentDescription = "Wyłączony",
+                            modifier = Modifier.size(24.dp),
+                            tint = if (currentState == 1) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Stop",
+                            fontSize = 12.sp,
+                            color = if (currentState == 1) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                
+                // Przycisk: Dół (prawo)
+                Button(
+                    onClick = { onStateChange(2) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentState == 2) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(
+                        topStart = 0.dp,
+                        bottomStart = 0.dp,
+                        topEnd = 8.dp,
+                        bottomEnd = 8.dp
+                    ),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowDownward,
+                            contentDescription = "Dół",
+                            modifier = Modifier.size(24.dp),
+                            tint = if (currentState == 2) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Dół",
+                            fontSize = 12.sp,
+                            color = if (currentState == 2) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
