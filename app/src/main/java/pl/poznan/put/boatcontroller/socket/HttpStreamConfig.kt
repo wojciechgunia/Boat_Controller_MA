@@ -1,0 +1,63 @@
+package pl.poznan.put.boatcontroller.socket
+
+/**
+ * Konfiguracja pojedynczego HTTP streamu.
+ * 
+ * @param name Nazwa streamu (np. "camera", "sonar")
+ * @param port Port na którym znajduje się stream
+ * @param path Opcjonalna ścieżka w URL (np. "/stream", "/api/data"). Jeśli null, używa tylko portu.
+ * @param baseIp Adres IP (domyślnie "100.103.230.44")
+ */
+data class HttpStreamConfig(
+    val name: String,
+    val port: Int,
+    val path: String? = null,
+    val baseIp: String = "100.103.230.44"
+) {
+    /**
+     * Zwraca pełny URL streamu.
+     */
+    fun getUrl(): String {
+        return if (path != null) {
+            "http://$baseIp:$port$path"
+        } else {
+            "http://$baseIp:$port"
+        }
+    }
+}
+
+/**
+ * Centralna konfiguracja wszystkich HTTP streamów.
+ * Tutaj dodajesz nowe streamy - wystarczy dodać nową konfigurację.
+ */
+object HttpStreamConfigs {
+    // Podstawowy adres IP dla wszystkich streamów
+    private const val BASE_IP = "100.103.230.44"
+    
+    // Konfiguracje streamów
+    val CAMERA = HttpStreamConfig(
+        name = "camera",
+        port = 8080,
+        path = null, 
+        baseIp = BASE_IP
+    )
+    
+    val SONAR = HttpStreamConfig(
+        name = "sonar",
+        port = 8081,
+        path = null,
+        baseIp = BASE_IP
+    )
+    
+    // Przykład jak dodać nowy stream:
+    // val NEW_STREAM = HttpStreamConfig(
+    //     name = "new_stream",
+    //     port = 8082,
+    //     path = "/api/data", // opcjonalnie
+    //     baseIp = BASE_IP
+    // )
+    
+    // Funkcja getAll() została usunięta jako nieużywana.
+    // Jeśli będzie potrzebna w przyszłości, można ją przywrócić.
+}
+

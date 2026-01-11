@@ -6,14 +6,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +22,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -64,14 +61,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -117,6 +111,7 @@ import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
+import pl.poznan.put.boatcontroller.templates.HttpStreamView
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
@@ -816,27 +811,16 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun SonarTab(viewModel: ControllerViewModel) {
-        Box(modifier = Modifier
-            .fillMaxHeight()
-            .fillMaxWidth(), contentAlignment = Alignment.Center) {
-            viewModel.sonarData.let {
-                val bitmap = remember(viewModel.sonarData) {
-                    BitmapFactory.decodeByteArray(viewModel.sonarData, 0, viewModel.sonarData.size)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "Głębokość: ${viewModel.sensorsData.depth}m", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground)
-                    bitmap?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = "Zdjęcie z kamery",
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .aspectRatio(4f / 3f),
-                            contentScale = ContentScale.Crop
-                        )
-                    } ?: Text("Nie można odczytać obrazu", color = MaterialTheme.colorScheme.onBackground)}
-            }
-        }
+        val selectedTab = viewModel.selectedTab
+        val isSonarTabVisible = selectedTab == 1 // Sonar to zakładka nr 1
+
+        HttpStreamView(
+            streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getSonarUrl(),
+            connectionState = viewModel.sonarConnectionState,
+            errorMessage = viewModel.sonarErrorMessage,
+            isTabVisible = isSonarTabVisible,
+            label = "sonaru"
+        )
     }
 
     @Composable
@@ -949,29 +933,18 @@ class ControllerActivity: ComponentActivity() {
         }
     }
 
-    fun byteArrayToImageBitmap(bytes: ByteArray): ImageBitmap? {
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-    }
-
     @Composable
     fun CameraTab(viewModel: ControllerViewModel) {
-        Box(modifier = Modifier
-            .fillMaxHeight()
-            .fillMaxWidth(), contentAlignment = Alignment.Center) {
-            viewModel.cameraFeed.let {
-                val imageBitmap = byteArrayToImageBitmap(it)
-                imageBitmap?.let { bitmap ->
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = "Zdjęcie z kamery",
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .aspectRatio(4f / 3f),
-                        contentScale = ContentScale.Crop
-                    )
-                } ?: Text("Nie można odczytać obrazu", color = MaterialTheme.colorScheme.onBackground)
-            }
-        }
+        val selectedTab = viewModel.selectedTab
+        val isCameraTabVisible = selectedTab == 3 // Camera to zakładka nr 3
+
+        HttpStreamView(
+            streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getCameraUrl(),
+            connectionState = viewModel.cameraConnectionState,
+            errorMessage = viewModel.cameraErrorMessage,
+            isTabVisible = isCameraTabVisible,
+            label = "kamery"
+        )
     }
 
     // MOJE FUNKCJE Z WAYPOINT ACTIVITY
@@ -1149,9 +1122,4 @@ class ControllerActivity: ComponentActivity() {
         }
     }
 
-    @Preview(showBackground = true)
-    @Composable
-    fun PreviewPhoneAnimationScreen() {
-
-    }
 }

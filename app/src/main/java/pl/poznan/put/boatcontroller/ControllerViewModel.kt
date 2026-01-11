@@ -14,12 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -36,14 +32,11 @@ import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
-import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.TimeUnit
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import pl.poznan.put.boatcontroller.socket.SocketEvent
 import pl.poznan.put.boatcontroller.socket.SocketRepository
 import pl.poznan.put.boatcontroller.socket.SocketCommand
+import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 
 class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
@@ -91,25 +84,20 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     var currentSpeed by mutableFloatStateOf(0.0f)
         private set
-
-    var sonarData by mutableStateOf(ByteArray(0))
-        private set
-
     var sensorsData by mutableStateOf(ShipSensorsData())
         private set
 
-    var cameraFeed by mutableStateOf(ByteArray(0))
+    // ===================== HTTP Streams – konfiguracja =====================
+    // Konfiguracja jest w HttpStreamConfigs - tutaj tylko stany połączeń
+    var sonarConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
+        private set
+    var sonarErrorMessage by mutableStateOf<String?>(null)
         private set
 
-    // ===================== Kamera – konfiguracja źródła =====================
-    // TODO: Podmień na swój docelowy URL kamery (np. z VPN):
-    // przykład: "http://10.8.0.5:8080/camera.jpg" albo "http://ip:port/camera"
-    private val cameraUrl = "http://100.103.230.44:8080/stream"
-    private val cameraClient = OkHttpClient.Builder()
-        .readTimeout(5, TimeUnit.SECONDS)
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .build()
-    private var cameraStreamingStarted = false
+    var cameraConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
+        private set
+    var cameraErrorMessage by mutableStateOf<String?>(null)
+        private set
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -122,121 +110,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         println("Home position: $homePosition")
     }
 
-    fun updateSonarData(sonarData: ByteArray) {
-        this.sonarData = sonarData
-    }
-
     fun updateSensorsData(sensorsData: ShipSensorsData) {
         this.sensorsData = sensorsData
         println("Sensors data: $sensorsData")
-    }
-
-    fun updateCameraFeed(cameraFeed: ByteArray) {
-        this.cameraFeed = cameraFeed
-    }
-
-    /**
-     * Strumieniowe pobieranie obrazu z kamery.
-     *
-     * Obsługuje dwa przypadki:
-     *  - multipart/x-mixed-replace (MJPEG) – jedno długie połączenie, z którego wyciągamy kolejne klatki JPEG,
-     *  - zwykły JPEG – pojedynczy obraz, po którym ponawiamy połączenie po krótkiej przerwie.
-     */
-    private fun startCameraStream() {
-        if (cameraStreamingStarted) return
-        cameraStreamingStarted = true
-
-        viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                try {
-                    val request = Request.Builder()
-                        .url(cameraUrl)
-                        .get()
-                        .build()
-
-                    cameraClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            Log.e("ControllerViewModel", "Camera HTTP error: ${response.code}")
-                        } else {
-                            val body = response.body ?: return@use
-                            val contentType = response.header("Content-Type") ?: ""
-
-                            if (contentType.startsWith("multipart/x-mixed-replace")) {
-                                // MJPEG – jedno długie połączenie, wyciągamy kolejne JPEG-i po znacznikach FFD8/FFD9
-                                parseMjpegStream(body.byteStream())
-                            } else {
-                                // Pojedynczy JPEG
-                                val bytes = body.bytes()
-                                if (bytes.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) {
-                                        updateCameraFeed(bytes)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("ControllerViewModel", "Camera fetch error", e)
-                }
-
-                // Przy MJPEG wyjdziemy tu dopiero po zerwaniu połączenia – dajmy chwilę przerwy przed reconnectem
-                delay(1000)
-            }
-        }
-    }
-
-    /**
-     * Bardzo prosty parser MJPEG: szuka sekwencji bajtów 0xFF 0xD8 (SOI) ... 0xFF 0xD9 (EOI)
-     * i każdą taką ramkę traktuje jako kompletnego JPEG-a.
-     */
-    private suspend fun parseMjpegStream(input: java.io.InputStream) {
-        val buffer = ByteArray(4096)
-        val frameBuffer = ByteArrayOutputStream()
-        var inFrame = false
-        var prevByte: Int = -1
-
-        try {
-            while (true) {
-                val bytesRead = input.read(buffer)
-                if (bytesRead == -1) break
-
-                for (i in 0 until bytesRead) {
-                    val b = buffer[i].toInt() and 0xFF
-
-                    // Start of Image: FF D8
-                    if (prevByte == 0xFF && b == 0xD8) {
-                        // Nowa klatka – zacznij od zera
-                        frameBuffer.reset()
-                        frameBuffer.write(0xFF)
-                        frameBuffer.write(0xD8)
-                        inFrame = true
-                    } else if (inFrame) {
-                        frameBuffer.write(b)
-                    }
-
-                    // End of Image: FF D9
-                    if (prevByte == 0xFF && b == 0xD9 && inFrame) {
-                        val frameBytes = frameBuffer.toByteArray()
-                        if (frameBytes.isNotEmpty()) {
-                            withContext(Dispatchers.Main) {
-                                updateCameraFeed(frameBytes)
-                            }
-                        }
-                        inFrame = false
-                        frameBuffer.reset()
-                    }
-
-                    prevByte = b
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("ControllerViewModel", "MJPEG stream parse error", e)
-        } finally {
-            try {
-                input.close()
-            } catch (_: Exception) {
-            }
-        }
     }
 
     fun initModel() {
@@ -283,7 +159,34 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         observeSocket()
         observeSocketConnection()
         loadSavedMission()
-        startCameraStream()
+        // Uruchom połączenia HTTP stream przy inicjalizacji ViewModel
+        HttpStreamRepository.startAll()
+        
+        // Obserwuj stany połączeń
+        observeHttpStreamConnections()
+    }
+    
+    private fun observeHttpStreamConnections() {
+        viewModelScope.launch {
+            HttpStreamRepository.cameraConnectionState?.collectLatest { state ->
+                cameraConnectionState = state
+            }
+        }
+        viewModelScope.launch {
+            HttpStreamRepository.sonarConnectionState?.collectLatest { state ->
+                sonarConnectionState = state
+            }
+        }
+        viewModelScope.launch {
+            HttpStreamRepository.cameraErrorMessage?.collectLatest { error ->
+                cameraErrorMessage = error
+            }
+        }
+        viewModelScope.launch {
+            HttpStreamRepository.sonarErrorMessage?.collectLatest { error ->
+                sonarErrorMessage = error
+            }
+        }
     }
     
     private fun loadSavedMission() {
@@ -513,4 +416,11 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             loadMission()
         }
     }
+}
+
+enum class ConnectionState {
+    Connected,
+    Disconnected,
+    Connecting,
+    Error,
 }
