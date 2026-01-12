@@ -154,7 +154,6 @@ object HttpStreamRepository {
     
     /**
      * Niszczy WebView - wywoływane gdy tab traci widoczność.
-     * Używa bezpiecznej logiki z try-catch dla każdej metody osobno.
      */
     fun destroyWebView() {
         val webView = activeWebView
@@ -165,49 +164,14 @@ object HttpStreamRepository {
         
         webView?.let { view ->
             try {
-                // Sprawdź czy WebView jest jeszcze w hierarchii widoków (ma parent)
-                // Jeśli nie ma parent, WebView jest już zniszczony lub usunięty
-                val hasParent = view.parent != null
-                
-                // Używamy try-catch dla każdej metody osobno, aby uniknąć błędów
-                if (hasParent) {
-                    try {
-                        view.onPause()
-                    } catch (e: Exception) {
-                        // Ignoruj - WebView może być już zniszczony
-                    }
-                }
-                try {
-                    view.stopLoading()
-                } catch (e: Exception) {
-                    // Ignoruj - WebView może być już zniszczony
-                }
-                try {
-                    view.clearHistory()
-                } catch (e: Exception) {
-                    // Ignoruj - WebView może być już zniszczony
-                }
-                try {
-                    view.clearCache(true)
-                } catch (e: Exception) {
-                    // Ignoruj - WebView może być już zniszczony
-                }
-                if (hasParent) {
-                    try {
-                        view.loadUrl("about:blank")
-                    } catch (e: Exception) {
-                        // Ignoruj - WebView może być już zniszczony
-                    }
-                }
-                if (hasParent) {
-                    try {
-                        view.destroy()
-                    } catch (e: Exception) {
-                        // Ignoruj - WebView może być już zniszczony
-                    }
-                }
+                view.onPause()
+                view.stopLoading()
+                view.clearHistory()
+                view.clearCache(true)
+                view.loadUrl("about:blank")
+                view.destroy()
             } catch (e: Exception) {
-                // Ignoruj wszystkie błędy przy niszczeniu
+                // Ignoruj błędy przy niszczeniu - WebView może być już zniszczony
             }
         }
     }

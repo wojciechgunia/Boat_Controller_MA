@@ -1,7 +1,6 @@
 package pl.poznan.put.boatcontroller.templates
 
 import android.annotation.SuppressLint
-import android.util.Log
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -27,6 +26,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -109,7 +109,7 @@ fun HttpStreamView(
     }
     
     // Licznik odświeżeń - używany do wymuszenia ponownego utworzenia WebView
-    var refreshCounter by remember { mutableStateOf(0) }
+    var refreshCounter by remember { mutableIntStateOf(0) }
     
     // Timeout 5 sekund - pokaż błąd jeśli nie ma połączenia po 5 sekundach
     // WAŻNE: NIE dodajemy connectionState do dependencies, bo gdy forceReconnect zmienia stan,
@@ -120,7 +120,7 @@ fun HttpStreamView(
             // Czekaj 5 sekund - ten delay nie zostanie przerwany przez zmiany connectionState
             kotlinx.coroutines.delay(5000)
             // Sprawdź czy połączenie się udało (sprawdzamy aktualny connectionState po delay)
-            if (connectionState != ConnectionState.Connected && isTabActive && isTabVisible) {
+            if (connectionState != ConnectionState.Connected) {
                 setShowErrorState(true)
             } else {
                 setShowErrorState(false)
@@ -151,58 +151,19 @@ fun HttpStreamView(
     }
 
     // Funkcja pomocnicza do bezpiecznego niszczenia WebView
-    // Zwraca true jeśli WebView został zniszczony, false jeśli był już zniszczony lub null
-    val safeDestroyWebView: (WebView?) -> Boolean = { webView ->
+    val safeDestroyWebView: (WebView?) -> Unit = { webView ->
         webView?.let { view ->
             try {
-                // Sprawdź czy WebView jest jeszcze w hierarchii widoków (ma parent)
-                // Jeśli nie ma parent, WebView jest już zniszczony lub usunięty
-                val hasParent = view.parent != null
-                
-                // Sprawdź czy WebView nie jest już zniszczony przed wywołaniem metod
-                // Używamy try-catch dla każdej metody osobno, aby uniknąć błędów
-                if (hasParent) {
-                    try {
-                        view.onPause()
-                    } catch (e: Exception) {
-                        // Ignoruj - WebView może być już zniszczony
-                    }
-                }
-                try {
-                    view.stopLoading()
-                } catch (e: Exception) {
-                    // Ignoruj - WebView może być już zniszczony
-                }
-                try {
-                    view.clearHistory()
-                } catch (e: Exception) {
-                    // Ignoruj - WebView może być już zniszczony
-                }
-                try {
-                    view.clearCache(true)
-                } catch (e: Exception) {
-                    // Ignoruj - WebView może być już zniszczony
-                }
-                if (hasParent) {
-                    try {
-                        view.loadUrl("about:blank")
-                    } catch (e: Exception) {
-                        // Ignoruj - WebView może być już zniszczony
-                    }
-                }
-                if (hasParent) {
-                    try {
-                        view.destroy()
-                    } catch (e: Exception) {
-                        // Ignoruj - WebView może być już zniszczony
-                    }
-                }
-                true // WebView został zniszczony (lub próbowaliśmy)
+                view.onPause()
+                view.stopLoading()
+                view.clearHistory()
+                view.clearCache(true)
+                view.loadUrl("about:blank")
+                view.destroy()
             } catch (e: Exception) {
-                // Ignoruj wszystkie błędy przy niszczeniu
-                false
+                // Ignoruj błędy przy niszczeniu - WebView może być już zniszczony
             }
-        } ?: false // WebView był null
+        }
     }
     
     // KLUCZOWE: DisposableEffect z kluczem shouldShowWebView - niszczy WebView gdy tab traci widoczność
@@ -257,7 +218,7 @@ fun HttpStreamView(
                     fontSize = 12.sp
                 )
             }
-        } else if (streamUrl != null && connectionState == ConnectionState.Connected && errorMessage == null && !showError && shouldShowWebView) {
+        } else if (streamUrl != null && connectionState == ConnectionState.Connected && errorMessage == null && !showError) {
             // KLUCZOWE: key() z shouldShowWebView i refreshCounter wymusza całkowite usunięcie AndroidView gdy tab traci widoczność lub przy odświeżaniu
             key("$label-$shouldShowWebView-$streamUrl-$refreshCounter") {
                 AndroidView(
@@ -318,11 +279,11 @@ fun HttpStreamView(
                             ): android.webkit.WebResourceResponse? {
                                 val url = request?.url?.toString() ?: return null
 
-                                val isStreamUrl = streamUrl?.let { url.contains(it, ignoreCase = true) } == true
+                                val isStreamUrl = streamUrl.let { url.contains(it, ignoreCase = true) } == true
                                 if (isStreamUrl) {
                                     // Sprawdź czy tab z configu jest faktycznie widoczny
                                     val activeTab = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getActiveTab()
-                                    val shouldBeVisible = config?.tab == activeTab
+                                    val shouldBeVisible = config.tab == activeTab
                                     
                                     if (!shouldBeVisible) {
                                         // Blokuj request jeśli tab nie jest widoczny (zabezpieczenie)
@@ -394,7 +355,7 @@ fun HttpStreamView(
                 update = { view ->
                     // Sprawdź czy tab z configu jest faktycznie widoczny
                     val activeTab = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getActiveTab()
-                    val shouldBeVisible = config?.tab == activeTab
+                    val shouldBeVisible = config.tab == activeTab
                     
                     if (!shouldBeVisible) {
                         // Tab nie jest widoczny - zatrzymaj WebView
@@ -408,7 +369,7 @@ fun HttpStreamView(
                     // Tab jest widoczny - upewniamy się że stream jest załadowany
                     view.onResume()
                     if (view.url.isNullOrEmpty() || view.url != streamUrl) {
-                        view.loadUrl(streamUrl ?: "about:blank")
+                        view.loadUrl(streamUrl)
                     }
                 }
                 )
