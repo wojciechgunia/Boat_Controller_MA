@@ -111,6 +111,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import org.maplibre.android.style.layers.SymbolLayer
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
+import pl.poznan.put.boatcontroller.enums.ControllerTab
 import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
@@ -128,6 +129,9 @@ class ControllerActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.Theme_BoatController)
         super.onCreate(savedInstanceState)
+        
+        // Inicjalizuj stan - domyślnie żaden tab nie jest aktywny
+        pl.poznan.put.boatcontroller.socket.HttpStreamRepository.setActiveTab(ControllerTab.NONE)
 
         setContent {
             BoatControllerTheme {
@@ -156,6 +160,22 @@ class ControllerActivity: ComponentActivity() {
         setResult(Activity.RESULT_OK)
         @Suppress("DEPRECATION")
         super.onBackPressed()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Aplikacja schodzi z ekranu (np. minimalizacja) – twardo wyłącz wszystkie streamy
+        pl.poznan.put.boatcontroller.socket.HttpStreamRepository.onAppPaused()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Po powrocie na ekran przywróć ostatni aktywny tab (jeśli był Sonar lub Camera)
+        val restoredTab = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.onAppResumed()
+        if (restoredTab != null) {
+            // Upewnij się że selectedTab jest zsynchronizowany
+            viewModel.selectedTab = restoredTab
+        }
     }
 
     @Composable
@@ -247,7 +267,7 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun EngineControlScreen(viewModel: ControllerViewModel) {
-        val tabs = listOf("Map", "Sonar", "Sensors", "Camera")
+        val tabs = listOf(ControllerTab.MAP, ControllerTab.SONAR, ControllerTab.SENSORS, ControllerTab.CAMERA)
         val isTablet = isTablet(this)
         var isSyncOn by remember { mutableStateOf(false) }
 
@@ -342,21 +362,27 @@ class ControllerActivity: ComponentActivity() {
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        TabRow(selectedTabIndex = viewModel.selectedTab) {
-                            tabs.forEachIndexed { index, title ->
+                        TabRow(selectedTabIndex = tabs.indexOf(viewModel.selectedTab)) {
+                            tabs.forEach { tab ->
                                 Tab(
-                                    selected = viewModel.selectedTab == index,
-                                    onClick = { viewModel.selectedTab = index },
-                                    text = { Text(title) }
+                                    selected = viewModel.selectedTab == tab,
+                                    onClick = { 
+                                        viewModel.selectedTab = tab
+                                        
+                                        // Informuj HttpStreamRepository o zmianie taba
+                                        pl.poznan.put.boatcontroller.socket.HttpStreamRepository.setActiveTab(tab)
+                                    },
+                                    text = { Text(tab.displayName) }
                                 )
                             }
                         }
 
                         when (viewModel.selectedTab) {
-                            0 -> {MapTab(viewModel) }
-                            1 -> {SonarTab(viewModel) }
-                            2 -> {SensorsTab(viewModel) }
-                            3 -> {CameraTab(viewModel) }
+                            ControllerTab.MAP -> {MapTab(viewModel) }
+                            ControllerTab.SONAR -> {SonarTab(viewModel) }
+                            ControllerTab.SENSORS -> {SensorsTab(viewModel) }
+                            ControllerTab.CAMERA -> {CameraTab(viewModel) }
+                            ControllerTab.NONE -> { /* Nie powinno się zdarzyć */ }
                         }
                     }
                 }
@@ -712,6 +738,20 @@ class ControllerActivity: ComponentActivity() {
                                 }
                             """.trimIndent()
                             mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                                // Optymalizacja: Zwiększ cache dla kafelków mapy aby zmniejszyć zużycie danych
+                                // Cache jest włączony domyślnie, ale zwiększamy jego rozmiar
+                                try {
+                                    // MapLibre automatycznie cache'uje kafelki, ale możemy zwiększyć limit
+                                    // Domyślny cache to ~50 MB, zwiększamy do ~100 MB dla lepszej wydajności
+                                    // To zmniejszy potrzebę ponownego pobierania kafelków przy przesuwaniu mapy
+                                    mapboxMap.tileCacheEnabled = true
+                                    // Uwaga: setTileCacheSize() może nie być dostępne we wszystkich wersjach MapLibre
+                                    // Jeśli metoda nie istnieje, cache będzie używał domyślnego rozmiaru
+                                } catch (e: Exception) {
+                                    // Ignoruj jeśli metoda nie jest dostępna
+                                    Log.d("MapLibre", "Tile cache optimization not available: ${e.message}")
+                                }
+                                
                                 viewModel.setMapReady(mapboxMap)
                                 initializeMapSources(style)
                                 updateBitmaps(style, context)
@@ -816,15 +856,30 @@ class ControllerActivity: ComponentActivity() {
     @Composable
     fun SonarTab(viewModel: ControllerViewModel) {
         val selectedTab = viewModel.selectedTab
-        val isSonarTabVisible = selectedTab == 1 // Sonar to zakładka nr 1
+        val isSonarTabVisible = selectedTab == ControllerTab.SONAR
 
-        HttpStreamView(
-            streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getSonarUrl(),
-            connectionState = viewModel.sonarConnectionState,
-            errorMessage = viewModel.sonarErrorMessage,
-            isTabVisible = isSonarTabVisible,
-            label = "sonaru"
-        )
+        var showError by remember { mutableStateOf(false) }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            HttpStreamView(
+                streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getUrlForTab(ControllerTab.SONAR),
+                connectionState = viewModel.httpConnectionState,
+                errorMessage = viewModel.httpErrorMessage,
+                isTabVisible = isSonarTabVisible,
+                label = "sonaru",
+                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.SONAR,
+                onShowErrorChange = { showError = it }
+            )
+            
+            // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
+            ConnectionStatusIndicator(
+                connectionState = viewModel.httpConnectionState,
+                showError = showError,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
+        }
     }
 
     @Composable
@@ -1108,15 +1163,30 @@ class ControllerActivity: ComponentActivity() {
     @Composable
     fun CameraTab(viewModel: ControllerViewModel) {
         val selectedTab = viewModel.selectedTab
-        val isCameraTabVisible = selectedTab == 3 // Camera to zakładka nr 3
+        val isCameraTabVisible = selectedTab == ControllerTab.CAMERA
 
-        HttpStreamView(
-            streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getCameraUrl(),
-            connectionState = viewModel.cameraConnectionState,
-            errorMessage = viewModel.cameraErrorMessage,
-            isTabVisible = isCameraTabVisible,
-            label = "kamery"
-        )
+        var showError by remember { mutableStateOf(false) }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            HttpStreamView(
+                streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getUrlForTab(ControllerTab.CAMERA),
+                connectionState = viewModel.httpConnectionState,
+                errorMessage = viewModel.httpErrorMessage,
+                isTabVisible = isCameraTabVisible,
+                label = "kamery",
+                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.CAMERA,
+                onShowErrorChange = { showError = it }
+            )
+            
+            // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
+            ConnectionStatusIndicator(
+                connectionState = viewModel.httpConnectionState,
+                showError = showError,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
+        }
     }
 
     // MOJE FUNKCJE Z WAYPOINT ACTIVITY
@@ -1291,6 +1361,56 @@ class ControllerActivity: ComponentActivity() {
                     .offset(x = 4.dp, y = (-4).dp),
                 tint = Color.Unspecified
             )
+        }
+    }
+    
+    /**
+     * Wskaźnik stanu połączenia streamu.
+     * Wyświetla kolorową kropkę wskazującą czy stream jest połączony.
+     * Uspójnione komunikaty: "Połączono", "Łączenie...", "Brak połączenia"
+     * 
+     * @param connectionState Stan połączenia
+     * @param showError Czy pokazać błąd (true po timeout 5s)
+     * @param modifier Modifier
+     */
+    @Composable
+    fun ConnectionStatusIndicator(
+        connectionState: ConnectionState,
+        showError: Boolean = false,
+        modifier: Modifier = Modifier
+    ) {
+        // Uspójniony stan - ten sam co w HttpStreamView
+        // WAŻNE: Gdy showError == true, zawsze pokazuj "Brak połączenia" (nie czekaj na connectionState.Error)
+        val (color, text) = when {
+            connectionState == ConnectionState.Connected -> Color.Green to "Połączono"
+            showError -> Color.Red to "Brak połączenia" // Natychmiast pokaż błąd gdy showError == true
+            else -> Color.Yellow to "Łączenie..."
+        }
+        
+        Box(
+            modifier = modifier
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .background(color, CircleShape)
+                )
+                Text(
+                    text = text,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 

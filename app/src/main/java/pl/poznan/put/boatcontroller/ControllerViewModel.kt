@@ -30,6 +30,7 @@ import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
 import pl.poznan.put.boatcontroller.dataclass.WaypointObject
+import pl.poznan.put.boatcontroller.enums.ControllerTab
 import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
 import java.util.concurrent.atomic.AtomicInteger
@@ -50,7 +51,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     var leftEnginePower by mutableIntStateOf(0)
     var rightEnginePower by mutableIntStateOf(0)
-    var selectedTab by mutableIntStateOf(0)
+    var selectedTab by mutableStateOf(ControllerTab.MAP)
 
     private val _mapLibreMapState = mutableStateOf<MapLibreMap?>(null)
     val mapLibreMapState: MutableState<MapLibreMap?> = _mapLibreMapState
@@ -88,15 +89,10 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     // ===================== HTTP Streams – konfiguracja =====================
-    // Konfiguracja jest w HttpStreamConfigs - tutaj tylko stany połączeń
-    var sonarConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
+    // Jeden stan połączenia dla aktywnego streamu
+    var httpConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
         private set
-    var sonarErrorMessage by mutableStateOf<String?>(null)
-        private set
-
-    var cameraConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
-        private set
-    var cameraErrorMessage by mutableStateOf<String?>(null)
+    var httpErrorMessage by mutableStateOf<String?>(null)
         private set
     
     // Stan silnika zwijarki: 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
@@ -171,23 +167,13 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     
     private fun observeHttpStreamConnections() {
         viewModelScope.launch {
-            HttpStreamRepository.cameraConnectionState?.collectLatest { state ->
-                cameraConnectionState = state
+            HttpStreamRepository.connectionState.collectLatest { state ->
+                httpConnectionState = state
             }
         }
         viewModelScope.launch {
-            HttpStreamRepository.sonarConnectionState?.collectLatest { state ->
-                sonarConnectionState = state
-            }
-        }
-        viewModelScope.launch {
-            HttpStreamRepository.cameraErrorMessage?.collectLatest { error ->
-                cameraErrorMessage = error
-            }
-        }
-        viewModelScope.launch {
-            HttpStreamRepository.sonarErrorMessage?.collectLatest { error ->
-                sonarErrorMessage = error
+            HttpStreamRepository.errorMessage.collectLatest { error ->
+                httpErrorMessage = error
             }
         }
     }

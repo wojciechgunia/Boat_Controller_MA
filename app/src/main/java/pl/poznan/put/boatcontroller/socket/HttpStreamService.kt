@@ -1,6 +1,5 @@
 package pl.poznan.put.boatcontroller.socket
 
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -11,23 +10,30 @@ import pl.poznan.put.boatcontroller.ConnectionState
 /**
  * Serwis do zarządzania połączeniem WebView w tle.
  * Podobny do SocketService - utrzymuje połączenie i automatycznie reconnectuje.
+ * 
+ * Optymalizacja: Sprawdza dostępność częściej gdy tab jest widoczny, rzadziej gdy nie jest widoczny.
  */
 class HttpStreamService(
-    private val config: HttpStreamConfig
+    config: HttpStreamConfig // Jako property aby można było używać
 ) {
     val streamUrl = config.getUrl()
     
     private var isRunning = false
+    private var isTabVisible = false // Stan widoczności taba
     
     val connectionState = MutableSharedFlow<ConnectionState>(replay = 1)
     val errorMessage = MutableSharedFlow<String?>(replay = 1)
-    
+
     fun startConnectionLoop() {
         isRunning = true
+        
         CoroutineScope(Dispatchers.IO).launch {
             // Inicjalizuj stan jako Connecting
             connectionState.emit(ConnectionState.Connecting)
             errorMessage.emit(null)
+            
+            // Małe opóźnienie przed pierwszą próbą - daje czas na reset stanów w UI
+            delay(100)
             
             // Sprawdź czy URL jest dostępny przez prosty HTTP request
             while (isRunning) {
@@ -46,21 +52,24 @@ class HttpStreamService(
                     if (response.isSuccessful) {
                         connectionState.emit(ConnectionState.Connected)
                         errorMessage.emit(null)
-                        Log.d("HttpStreamService", "✅ URL available: $streamUrl")
                     } else {
                         connectionState.emit(ConnectionState.Error)
                         errorMessage.emit("Nie udało się połączyć z urządzeniem")
-                        Log.w("HttpStreamService", "⚠️ URL not available: $streamUrl (${response.code})")
                     }
                     response.close()
                 } catch (e: Exception) {
                     connectionState.emit(ConnectionState.Error)
                     errorMessage.emit("Nie udało się połączyć z urządzeniem")
-                    Log.w("HttpStreamService", "⚠️ Connection check failed, retrying in 5s...", e)
                 }
                 
-                // Sprawdzaj co 5 sekund
-                delay(5000)
+                // Optymalizacja: Sprawdzaj częściej gdy tab jest widoczny, rzadziej gdy nie jest
+                val checkInterval = if (isTabVisible) {
+                    5000L // 5 sekund gdy tab jest widoczny
+                } else {
+                    30000L // 30 sekund gdy tab nie jest widoczny (oszczędność danych)
+                }
+                
+                delay(checkInterval)
             }
         }
     }

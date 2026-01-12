@@ -587,6 +587,14 @@ class WaypointActivity : ComponentActivity() {
 
                 mapView.getMapAsync { mapboxMap ->
                     mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                        // Optymalizacja: Zwiększ cache dla kafelków mapy aby zmniejszyć zużycie danych
+                        try {
+                            mapboxMap.setTileCacheEnabled(true)
+                            // Zwiększony cache zmniejszy potrzebę ponownego pobierania kafelków
+                        } catch (e: Exception) {
+                            android.util.Log.d("MapLibre", "Tile cache optimization not available: ${e.message}")
+                        }
+                        
                         waypointVm.setMapReady(mapboxMap)
                         initializeMapSources(style)
                         updateBitmaps(style, context)

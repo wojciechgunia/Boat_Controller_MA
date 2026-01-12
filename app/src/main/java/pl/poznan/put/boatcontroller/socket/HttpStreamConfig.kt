@@ -1,16 +1,20 @@
 package pl.poznan.put.boatcontroller.socket
 
+import pl.poznan.put.boatcontroller.enums.ControllerTab
+
 /**
  * Konfiguracja pojedynczego HTTP streamu.
  * 
  * @param name Nazwa streamu (np. "camera", "sonar")
  * @param port Port na którym znajduje się stream
+ * @param tab Tab w którym stream jest wyświetlany
  * @param path Opcjonalna ścieżka w URL (np. "/stream", "/api/data"). Jeśli null, używa tylko portu.
  * @param baseIp Adres IP (domyślnie "100.103.230.44")
  */
 data class HttpStreamConfig(
     val name: String,
     val port: Int,
+    val tab: ControllerTab,
     val path: String? = null,
     val baseIp: String = "100.103.230.44"
 ) {
@@ -38,6 +42,7 @@ object HttpStreamConfigs {
     val CAMERA = HttpStreamConfig(
         name = "camera",
         port = 8080,
+        tab = ControllerTab.CAMERA,
         path = null, 
         baseIp = BASE_IP
     )
@@ -45,9 +50,21 @@ object HttpStreamConfigs {
     val SONAR = HttpStreamConfig(
         name = "sonar",
         port = 8081,
+        tab = ControllerTab.SONAR,
         path = null,
         baseIp = BASE_IP
     )
+    
+    /**
+     * Zwraca konfigurację streamu dla danego taba.
+     */
+    fun getConfigForTab(tab: ControllerTab): HttpStreamConfig? {
+        return when (tab) {
+            ControllerTab.CAMERA -> CAMERA
+            ControllerTab.SONAR -> SONAR
+            else -> null
+        }
+    }
     
     // Przykład jak dodać nowy stream:
     // val NEW_STREAM = HttpStreamConfig(
