@@ -422,7 +422,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
 enum class ConnectionState {
     Connected,
+    Reconnecting,
     Disconnected,
-    Connecting,
-    Error,
 }

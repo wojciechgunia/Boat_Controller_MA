@@ -54,6 +54,9 @@ object HttpStreamRepository {
                 logStreamStatus()
             }
         }
+        
+        // Usunięto monitorowanie timeoutów - HttpStreamService sam zarządza próbami połączenia
+        // (3 próby z interwałem, potem Disconnected)
     }
     
     /**
@@ -92,9 +95,13 @@ object HttpStreamRepository {
             if (config != null) {
                 // Zatrzymaj poprzedni serwis jeśli był
                 streamService?.stop()
+                resetObservation() // Resetuj obserwację przed utworzeniem nowego serwisu
                 
-                // Uruchom nowy serwis z odpowiednim configiem
-                streamService = HttpStreamService(config)
+                // Uruchom nowy serwis z odpowiednim configiem i callbackiem do pobierania aktywnego taba
+                streamService = HttpStreamService(config) { 
+                    // Callback do pobierania aktywnego taba
+                    currentActiveTab
+                }
                 streamService?.startConnectionLoop()
                 
                 // Obserwuj stan połączenia
@@ -170,7 +177,7 @@ object HttpStreamRepository {
                 view.clearCache(true)
                 view.loadUrl("about:blank")
                 view.destroy()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignoruj błędy przy niszczeniu - WebView może być już zniszczony
             }
         }
@@ -224,14 +231,46 @@ object HttpStreamRepository {
     }
     
     /**
+     * Zmienia stan na Reconnecting - używane gdy wykrywamy utratę połączenia.
+     */
+    fun setReconnecting() {
+        connectionState.tryEmit(ConnectionState.Reconnecting)
+        errorMessage.tryEmit(null)
+    }
+    
+    /**
      * Wymusza ponowne połączenie - resetuje stan i wymusza reconnect.
      */
     fun forceReconnect(tab: ControllerTab) {
         destroyWebView()
-        // Resetuj stan połączenia
-        connectionState.tryEmit(ConnectionState.Connecting)
+        // Resetuj stan połączenia - rozpocznij próbę połączenia
+        connectionState.tryEmit(ConnectionState.Reconnecting)
         errorMessage.tryEmit(null)
-        setActiveTab(tab)
+        // Resetuj czas ostatniego requestu
+        lastRequestTime = 0L
+        
+        // WAŻNE: Zatrzymaj i ponownie utwórz serwis, aby zresetować jego stan i uniknąć cache'owanych połączeń
+        streamService?.stop()
+        resetObservation() // Resetuj obserwację przed utworzeniem nowego serwisu
+        streamService = null
+        
+        // Ustaw aktywny tab PRZED utworzeniem serwisu (tylko jeśli się zmienił)
+        if (currentActiveTab != tab) {
+            currentActiveTab = tab
+        }
+        
+        // Upewnij się że tab jest aktywny przed utworzeniem serwisu
+        if (tab == ControllerTab.SONAR || tab == ControllerTab.CAMERA) {
+            val config = HttpStreamConfigs.getConfigForTab(tab)
+            if (config != null) {
+                streamService = HttpStreamService(config) { 
+                    // Callback do pobierania aktywnego taba
+                    currentActiveTab
+                }
+                streamService?.startConnectionLoop()
+                observeConnectionState()
+            }
+        }
     }
     
     /**

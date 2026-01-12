@@ -23,13 +23,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +38,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import pl.poznan.put.boatcontroller.ConnectionState
 import pl.poznan.put.boatcontroller.enums.ControllerTab
 import pl.poznan.put.boatcontroller.socket.HttpStreamConfig
+import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 
 /**
  * Reużywalny komponent do wyświetlania strumieni HTTP w WebView.
@@ -49,10 +47,8 @@ import pl.poznan.put.boatcontroller.socket.HttpStreamConfig
  * @param streamUrl URL do załadowania
  * @param connectionState Stan połączenia (uspójniony z ConnectionStatusIndicator)
  * @param errorMessage Komunikat błędu (null gdy brak błędu)
- * @param isTabVisible Czy zakładka jest obecnie widoczna
  * @param label Etykieta wyświetlana w komunikatach (np. "kamera", "sonar")
  * @param config Konfiguracja streamu (używana do weryfikacji i rejestracji)
- * @param onShowErrorChange Callback do przekazania stanu showError do ConnectionStatusIndicator
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -60,93 +56,39 @@ fun HttpStreamView(
     streamUrl: String?,
     connectionState: ConnectionState,
     errorMessage: String?,
-    isTabVisible: Boolean,
-    label: String = "urządzenie",
-    config: HttpStreamConfig? = null,
-    onShowErrorChange: ((Boolean) -> Unit)? = null
+    label: String = "device",
+    config: HttpStreamConfig? = null
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    // Współdzielony stan showError - używany zarówno lokalnie jak i w callbacku
-    val showErrorState = remember { mutableStateOf(false) }
-    val showError = showErrorState.value
-    var connectionStartTime by remember { mutableStateOf<Long?>(null) }
     
-    // Zapamiętaj aktualne callbacki - używane w WebView callbacks
-    val currentOnShowErrorChange = rememberUpdatedState(onShowErrorChange)
-    
-    // Funkcja do ustawiania showError - aktualizuje zarówno lokalny stan jak i callback
-    val setShowErrorState: (Boolean) -> Unit = remember {
-        { error ->
-            showErrorState.value = error
-            currentOnShowErrorChange.value?.invoke(error)
-        }
-    }
-    
-    // Pobierz stan z centralnego repozytorium - sprawdź czy tab z configu jest aktywny
-    val activeTab = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getActiveTab()
-    // Uproszczona logika - sprawdzamy tylko czy config tab jest aktywny i czy tab jest widoczny
-    val isTabActive = config?.tab == activeTab
-    val shouldShowWebView = isTabActive && isTabVisible
+    // Sprawdź czy tab z configu jest aktywny - wywołujemy bezpośrednio zamiast tworzyć zmienną lokalną
+    val isTabActive = config?.tab == HttpStreamRepository.getActiveTab()
     
     // Uspójniony stan wyświetlania - używany zarówno dla Box jak i komunikatu
     // Ten sam stan co w ConnectionStatusIndicator
-    // WAŻNE: Gdy showError == true, zawsze pokazuj "Brak połączenia" (nie czekaj na connectionState.Error)
-    val displayState = when {
-        connectionState == ConnectionState.Connected -> "Połączono"
-        showError -> "Brak połączenia" // Natychmiast pokaż błąd gdy showError == true
-        else -> "Łączenie..."
+    val displayState = when (connectionState) {
+        ConnectionState.Connected -> "Connected"
+        ConnectionState.Reconnecting -> "Reconnecting..."
+        ConnectionState.Disconnected -> "Disconnected"
     }
     
-    // Resetuj timeout gdy tab staje się aktywny lub gdy wymuszamy reconnect
-    LaunchedEffect(isTabActive, isTabVisible) {
-        if (isTabActive && isTabVisible) {
-            connectionStartTime = System.currentTimeMillis()
-            setShowErrorState(false)
-        } else {
-            connectionStartTime = null
-            setShowErrorState(false)
-        }
+    // Nagłówki HTTP używane do wymuszenia zamknięcia połączenia i wyłączenia cache
+    // Używane w wielu miejscach - wyciągnięte do stałej aby uniknąć duplikacji
+    val httpHeaders = remember {
+        mapOf(
+            "Connection" to "close",
+            "Cache-Control" to "no-cache, no-store, must-revalidate",
+            "Pragma" to "no-cache",
+            "Expires" to "0"
+        )
     }
     
-    // Licznik odświeżeń - używany do wymuszenia ponownego utworzenia WebView
-    var refreshCounter by remember { mutableIntStateOf(0) }
-    
-    // Timeout 5 sekund - pokaż błąd jeśli nie ma połączenia po 5 sekundach
-    // WAŻNE: NIE dodajemy connectionState do dependencies, bo gdy forceReconnect zmienia stan,
-    // LaunchedEffect się restartuje i przerywa delay. Sprawdzamy connectionState PO delay.
-    // refreshCounter jest w dependencies, aby wymusić restart timeout przy odświeżaniu.
-    LaunchedEffect(connectionStartTime, isTabActive, isTabVisible, refreshCounter) {
-        if (isTabActive && isTabVisible && connectionStartTime != null) {
-            // Czekaj 5 sekund - ten delay nie zostanie przerwany przez zmiany connectionState
-            kotlinx.coroutines.delay(5000)
-            // Sprawdź czy połączenie się udało (sprawdzamy aktualny connectionState po delay)
-            if (connectionState != ConnectionState.Connected) {
-                setShowErrorState(true)
-            } else {
-                setShowErrorState(false)
-            }
-        }
-    }
-    
-    // Resetuj błąd gdy połączenie się uda
-    LaunchedEffect(connectionState) {
-        if (connectionState == ConnectionState.Connected) {
-            setShowErrorState(false)
-        }
-    }
-    
-    // Funkcja do odświeżania połączenia - używa tej samej logiki co zmiana taba
+    // Funkcja do odświeżania połączenia
     val onRefresh = {
         val tab = config?.tab
         if (tab != null && (tab == ControllerTab.SONAR || tab == ControllerTab.CAMERA)) {
-            // Resetuj stany - ta sama logika co przy zmianie taba
-            setShowErrorState(false)
-            connectionStartTime = System.currentTimeMillis()
-            refreshCounter++ // Zwiększ licznik aby wymusić ponowne utworzenie WebView
-            
             // Wywołaj forceReconnect - to zniszczy stare WebView w repozytorium i utworzy nowe
-            // Automatyczna logika timeout 5 sekund zadziała tak samo jak przy zmianie taba
-            pl.poznan.put.boatcontroller.socket.HttpStreamRepository.forceReconnect(tab)
+            HttpStreamRepository.forceReconnect(tab)
         }
     }
 
@@ -160,21 +102,21 @@ fun HttpStreamView(
                 view.clearCache(true)
                 view.loadUrl("about:blank")
                 view.destroy()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignoruj błędy przy niszczeniu - WebView może być już zniszczony
             }
         }
     }
     
-    // KLUCZOWE: DisposableEffect z kluczem shouldShowWebView - niszczy WebView gdy tab traci widoczność
-    DisposableEffect(shouldShowWebView, streamUrl) {
-        // Gdy tab traci widoczność, natychmiast niszczymy WebView i wyrejestrowujemy
-        if (!shouldShowWebView && webViewRef != null) {
+    // KLUCZOWE: DisposableEffect z kluczem isTabActive - niszczy WebView gdy tab traci aktywność
+    DisposableEffect(isTabActive, streamUrl) {
+        // Gdy tab traci aktywność, natychmiast niszczymy WebView i wyrejestrowujemy
+        if (!isTabActive && webViewRef != null) {
             val currentWebView = webViewRef
             webViewRef = null // Ustaw null natychmiast, aby uniknąć wielokrotnych wywołań
             safeDestroyWebView(currentWebView)
             // Wyrejestruj WebView w repozytorium
-            pl.poznan.put.boatcontroller.socket.HttpStreamRepository.registerWebView(null, null)
+            HttpStreamRepository.registerWebView(null, null)
         }
         
         onDispose {
@@ -187,7 +129,7 @@ fun HttpStreamView(
                 safeDestroyWebView(currentWebView)
             }
             // Wyrejestruj WebView w repozytorium
-            pl.poznan.put.boatcontroller.socket.HttpStreamRepository.registerWebView(null, null)
+            HttpStreamRepository.registerWebView(null, null)
         }
     }
 
@@ -196,38 +138,21 @@ fun HttpStreamView(
             .fillMaxSize()
             .clipToBounds() // Ważne: obetnij zawartość do granic Box
     ) {
-        // KLUCZOWE: WebView jest tworzony TYLKO gdy:
-        // 1. Tab jest faktycznie aktywny (shouldShowWebView == true)
-        // 2. Mamy URL streamu
-        // 3. Stan połączenia to Connected (TAK SAMO jak przy zmianie taba)
-        // 4. Nie ma błędu połączenia
-        // To gwarantuje zero pobierania danych gdy użytkownik nie jest w odpowiednim tabie
-        // i że WebView jest wyświetlany TYLKO gdy faktycznie jest połączenie
-        if (!shouldShowWebView) {
+        if (!isTabActive) {
             // Tab nie jest aktywny - NIE tworzymy WebView = zero pobierania danych
             // Wyświetl informację że stream jest zatrzymany
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Stream $label zatrzymany (tab nieaktywny)",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    fontSize = 12.sp
-                )
-            }
-        } else if (streamUrl != null && connectionState == ConnectionState.Connected && errorMessage == null && !showError) {
-            // KLUCZOWE: key() z shouldShowWebView i refreshCounter wymusza całkowite usunięcie AndroidView gdy tab traci widoczność lub przy odświeżaniu
-            key("$label-$shouldShowWebView-$streamUrl-$refreshCounter") {
+            return
+        } else if (streamUrl != null && connectionState == ConnectionState.Connected) {
+            // KLUCZOWE: key() z connectionState wymusza całkowite usunięcie AndroidView 
+            // gdy połączenie się zmienia (isTabActive jest zawsze true w tym miejscu, więc nie jest potrzebne)
+            key("$label-$streamUrl-$connectionState") {
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
                         webViewRef = this
                         
                         // Zarejestruj WebView w repozytorium z configiem
-                        pl.poznan.put.boatcontroller.socket.HttpStreamRepository.registerWebView(this, config)
+                        HttpStreamRepository.registerWebView(this, config)
 
                         // Ustaw layoutParams z WRAP_CONTENT, aby WebView nie próbował się rozciągać poza granice
                         layoutParams = android.view.ViewGroup.LayoutParams(
@@ -259,10 +184,10 @@ fun HttpStreamView(
                         // Naprawa requestedFrameRate: NaN - ustaw rendererPriorityPolicy
                         try {
                             setRendererPriorityPolicy(
-                                android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT,
+                                WebView.RENDERER_PRIORITY_IMPORTANT,
                                 false
                             )
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             // Ignoruj jeśli metoda nie jest dostępna
                         }
                         
@@ -279,11 +204,10 @@ fun HttpStreamView(
                             ): android.webkit.WebResourceResponse? {
                                 val url = request?.url?.toString() ?: return null
 
-                                val isStreamUrl = streamUrl.let { url.contains(it, ignoreCase = true) } == true
+                                val isStreamUrl = url.contains(streamUrl, ignoreCase = true)
                                 if (isStreamUrl) {
-                                    // Sprawdź czy tab z configu jest faktycznie widoczny
-                                    val activeTab = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getActiveTab()
-                                    val shouldBeVisible = config.tab == activeTab
+                                    // Sprawdź czy tab z configu jest faktycznie widoczny - wywołujemy bezpośrednio
+                                    val shouldBeVisible = config.tab == HttpStreamRepository.getActiveTab()
                                     
                                     if (!shouldBeVisible) {
                                         // Blokuj request jeśli tab nie jest widoczny (zabezpieczenie)
@@ -295,7 +219,7 @@ fun HttpStreamView(
                                     }
                                     
                                     // Zarejestruj request w repozytorium
-                                    pl.poznan.put.boatcontroller.socket.HttpStreamRepository.registerRequest()
+                                    HttpStreamRepository.registerRequest()
                                     
                                     return super.shouldInterceptRequest(view, request)
                                 }
@@ -332,20 +256,27 @@ fun HttpStreamView(
                             ) {
                                 super.onReceivedError(view, request, error)
                                 
-                                // WAŻNE: NIE ustawiamy showError natychmiast tutaj!
-                                // Pozwalamy timeout 5 sekund zadziałać tak samo jak przy zmianie taba.
-                                // onReceivedError może być wywoływane od razu po odświeżeniu, zanim minie 5 sekund,
-                                // co powodowało natychmiastowe pokazanie błędu. Teraz czekamy na timeout.
+                                // Wykryj błąd połączenia - jeśli request dotyczy streamu, natychmiast zmień stan na Reconnecting
+                                val url = request?.url?.toString() ?: ""
+                                val isStreamUrl = url.contains(streamUrl, ignoreCase = true)
                                 
-                                // Błędy są obsługiwane przez timeout 5 sekund w LaunchedEffect,
-                                // który sprawdza connectionState po 5 sekundach.
+                                if (isStreamUrl) {
+                                    // Błąd dotyczy streamu - zmień stan na Reconnecting (dajemy 5 sekund na próbę przywrócenia)
+                                    val currentState = HttpStreamRepository.connectionState.replayCache.lastOrNull()
+                                    if (currentState == ConnectionState.Connected) {
+                                        // Tylko jeśli byliśmy połączeni, zmień na Reconnecting
+                                        // Użyj publicznej metody która automatycznie ustawi reconnectingStartTime
+                                        HttpStreamRepository.setReconnecting()
+                                    }
+                                }
                             }
                         }
 
                         webChromeClient = WebChromeClient()
 
                         post {
-                            loadUrl(streamUrl)
+                            // Użyj wspólnych nagłówków HTTP
+                            loadUrl(streamUrl, httpHeaders)
                         }
                     }
                 },
@@ -353,9 +284,8 @@ fun HttpStreamView(
                     .fillMaxSize()
                     .clipToBounds(),
                 update = { view ->
-                    // Sprawdź czy tab z configu jest faktycznie widoczny
-                    val activeTab = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getActiveTab()
-                    val shouldBeVisible = config.tab == activeTab
+                    // Sprawdź czy tab z configu jest faktycznie widoczny - wywołujemy bezpośrednio
+                    val shouldBeVisible = config.tab == HttpStreamRepository.getActiveTab()
                     
                     if (!shouldBeVisible) {
                         // Tab nie jest widoczny - zatrzymaj WebView
@@ -369,13 +299,14 @@ fun HttpStreamView(
                     // Tab jest widoczny - upewniamy się że stream jest załadowany
                     view.onResume()
                     if (view.url.isNullOrEmpty() || view.url != streamUrl) {
-                        view.loadUrl(streamUrl)
+                        // Użyj wspólnych nagłówków HTTP
+                        view.loadUrl(streamUrl, httpHeaders)
                     }
                 }
                 )
             }
-        } else if (showError) {
-            // Wyświetl komunikat błędu z przyciskiem Refresh (po 5 sekundach timeout)
+        } else if (connectionState == ConnectionState.Disconnected) {
+            // Wyświetl komunikat błędu z przyciskiem Refresh gdy connectionState == Disconnected
             // Uspójniony komunikat: "Brak połączenia"
             Box(
                 modifier = Modifier
@@ -397,7 +328,7 @@ fun HttpStreamView(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = errorMessage ?: "Błąd połączenia z $label",
+                            text = errorMessage ?: "Connection with $label failed",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
@@ -415,13 +346,13 @@ fun HttpStreamView(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Odśwież",
+                            contentDescription = "Refresh",
                             modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Odśwież",
+                            text = "Refresh",
                             color = MaterialTheme.colorScheme.onPrimary,
                             fontSize = 14.sp
                         )
@@ -437,7 +368,7 @@ fun HttpStreamView(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Nie udało się przechwycić danych z $label",
+                    text = "Data catching error for $label",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp
                 )

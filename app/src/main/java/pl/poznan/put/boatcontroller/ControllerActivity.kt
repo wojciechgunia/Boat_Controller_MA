@@ -855,26 +855,19 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun SonarTab(viewModel: ControllerViewModel) {
-        val selectedTab = viewModel.selectedTab
-        val isSonarTabVisible = selectedTab == ControllerTab.SONAR
-
-        var showError by remember { mutableStateOf(false) }
-
         Box(modifier = Modifier.fillMaxSize()) {
             HttpStreamView(
                 streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getUrlForTab(ControllerTab.SONAR),
                 connectionState = viewModel.httpConnectionState,
                 errorMessage = viewModel.httpErrorMessage,
-                isTabVisible = isSonarTabVisible,
                 label = "sonaru",
-                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.SONAR,
-                onShowErrorChange = { showError = it }
+                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.SONAR
             )
             
             // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
             ConnectionStatusIndicator(
                 connectionState = viewModel.httpConnectionState,
-                showError = showError,
+                errorMessage = viewModel.httpErrorMessage,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
@@ -1162,26 +1155,19 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun CameraTab(viewModel: ControllerViewModel) {
-        val selectedTab = viewModel.selectedTab
-        val isCameraTabVisible = selectedTab == ControllerTab.CAMERA
-
-        var showError by remember { mutableStateOf(false) }
-
         Box(modifier = Modifier.fillMaxSize()) {
             HttpStreamView(
                 streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getUrlForTab(ControllerTab.CAMERA),
                 connectionState = viewModel.httpConnectionState,
                 errorMessage = viewModel.httpErrorMessage,
-                isTabVisible = isCameraTabVisible,
                 label = "kamery",
-                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.CAMERA,
-                onShowErrorChange = { showError = it }
+                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.CAMERA
             )
             
             // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
             ConnectionStatusIndicator(
                 connectionState = viewModel.httpConnectionState,
-                showError = showError,
+                errorMessage = viewModel.httpErrorMessage,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
@@ -1370,21 +1356,20 @@ class ControllerActivity: ComponentActivity() {
      * Uspójnione komunikaty: "Połączono", "Łączenie...", "Brak połączenia"
      * 
      * @param connectionState Stan połączenia
-     * @param showError Czy pokazać błąd (true po timeout 5s)
+     * @param errorMessage Komunikat błędu (opcjonalny)
      * @param modifier Modifier
      */
     @Composable
     fun ConnectionStatusIndicator(
         connectionState: ConnectionState,
-        showError: Boolean = false,
+        errorMessage: String? = null,
         modifier: Modifier = Modifier
     ) {
         // Uspójniony stan - ten sam co w HttpStreamView
-        // WAŻNE: Gdy showError == true, zawsze pokazuj "Brak połączenia" (nie czekaj na connectionState.Error)
-        val (color, text) = when {
-            connectionState == ConnectionState.Connected -> Color.Green to "Połączono"
-            showError -> Color.Red to "Brak połączenia" // Natychmiast pokaż błąd gdy showError == true
-            else -> Color.Yellow to "Łączenie..."
+        val (color, text) = when (connectionState) {
+            ConnectionState.Connected -> Color.Green to "Connected"
+            ConnectionState.Reconnecting -> Color.Yellow to "Reconnecting..."
+            ConnectionState.Disconnected -> Color.Red to "Disconnected"
         }
         
         Box(
