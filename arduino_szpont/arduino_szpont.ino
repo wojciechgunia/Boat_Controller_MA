@@ -34,9 +34,9 @@ unsigned long packets_sent = 0;
 unsigned long packets_received = 0;
 unsigned long last_motor_seq = 0;
 
-// Wartości silników (domyślnie 5)
-int motor_left_value = 5;
-int motor_right_value = 5;
+// Wartości silników (domyślnie 0 = neutral/stop)
+int motor_left_value = 0;
+int motor_right_value = 0;
 
 // Stan silnika zwijarki: 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
 int winch_state = 1; // Domyślnie wyłączony
@@ -356,19 +356,35 @@ void handle_tcp_command(const String& line) {
     double right = rightStr.toDouble();
     int winch = winchStr.toInt();
 
-    // Mapowanie: jeśli wartości w [0,1] → skala 1–10
+    // Mapowanie wartości z aplikacji mobilnej na format dla kontrolera (1-10)
+    // Aplikacja mobilna konwertuje -80..80 na 1..10 przed wysłaniem,
+    // ale obsługujemy też surowe wartości -80..80 dla kompatybilności wstecznej
     auto mapSpeed = [](double v) -> int {
-      if (v <= 1.0) {
-        int mapped = (int)round(v * 10.0);
+      // Jeśli wartość jest już w zakresie 1-10, przekaż dalej
+      if (v >= 1.0 && v <= 10.0) {
+        return (int)round(v);
+      }
+      
+      // Mapowanie surowych wartości -80..80 na 1..10 (dla kompatybilności wstecznej)
+      // -80 -> 1 (reverse max), 0 -> 5 (neutral), 80 -> 10 (forward max)
+      // Format dla ESC: 5 = neutral (stop), 1-4 = reverse, 6-10 = forward
+      if (v == 0.0) {
+        return 5; // Neutral (stop)
+      }
+      
+      if (v < 0.0) {
+        // Reverse: -80..-1 -> 1..4
+        int mapped = (int)round(5.0 + (v / 80.0) * 4.0);
         if (mapped < 1) mapped = 1;
+        if (mapped > 4) mapped = 4;
+        return mapped;
+      } else {
+        // Forward: 1..80 -> 6..10
+        int mapped = (int)round(5.0 + (v / 80.0) * 5.0);
+        if (mapped < 6) mapped = 6;
         if (mapped > 10) mapped = 10;
         return mapped;
       }
-      // Jeśli wartości już są w 1–10
-      int iv = (int)round(v);
-      if (iv < 1) iv = 1;
-      if (iv > 10) iv = 10;
-      return iv;
     };
 
     motor_left_value = mapSpeed(left);
@@ -444,6 +460,13 @@ void handle_tcp_command(const String& line) {
 }
 
 void send_motor_control() {
+  // Wysyłamy tylko jeśli wartości są różne od neutral (5)
+  // Jeśli oba silniki są na neutral (5) i zwijarka jest wyłączona (1), nie wysyłamy (żeby nie spamować)
+  if (motor_left_value == 5 && motor_right_value == 5 && winch_state == 1) {
+    // Wszystko na neutral - nie wysyłamy
+    return;
+  }
+  
   sequence_counter++;
   
   // Format: SS:left:right:winch:s_num:SS

@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
@@ -97,6 +99,11 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     
     // Stan silnika zwijarki: 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
     var winchState by mutableIntStateOf(1) // Domyślnie wyłączony
+    
+    // Mechanizm wysyłania SS z interwałem
+    private var currentSpeedSendJob: Job? = null
+    private val SS_REPEAT_COUNT = 5 // Liczba powtórzeń wiadomości SS
+    private val SS_REPEAT_INTERVAL_MS = 200L // Interwał między powtórzeniami (ms)
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -248,29 +255,84 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                     // Po każdym ponownym zestawieniu połączenia wyślij aktualne moce silników,
                     // żeby łódka (lub serwer testowy) od razu dostała wartości SS
                     // nawet jeśli użytkownik nic nie przesunie po reconnect.
+                    // Używamy sendSpeedWithInterval aby wysłać z interwałem
                     Log.d(
                         "ControllerViewModel",
                         "Socket connected – resending current speed L=$leftEnginePower R=$rightEnginePower"
                     )
-                    SocketRepository.send(
-                        SocketCommand.SetSpeed(
-                            left = leftEnginePower.toDouble(),
-                            right = rightEnginePower.toDouble(),
-                            winch = winchState,
-                            sNum = nextSNum()
-                        )
-                    )
+                    sendSpeedWithInterval(leftEnginePower, rightEnginePower, winchState)
                 }
             }
         }
     }
 
     private fun nextSNum(): Int = seq.incrementAndGet()
+    
+    /**
+     * Konwertuje wartość prędkości z zakresu aplikacji mobilnej (-80..80) na format dla kontrolera (1..10).
+     * -80 -> 1 (reverse max), 0 -> 5 (neutral), 80 -> 10 (forward max)
+     * Format dla ESC: 5 = neutral (stop), 1-4 = reverse, 6-10 = forward
+     */
+    private fun convertSpeedToControllerFormat(speed: Int): Int {
+        return when {
+            speed == 0 -> 5 // Neutral (stop)
+            speed < 0 -> {
+                // Reverse: -80..-1 -> 1..4
+                // speed = -80 -> 1, speed = -1 -> 4
+                val mapped = (5.0 + (speed / 80.0) * 4.0).toInt().coerceIn(1, 4)
+                mapped
+            }
+            else -> {
+                // Forward: 1..80 -> 6..10
+                // speed = 1 -> 6, speed = 80 -> 10
+                val mapped = (5.0 + (speed / 80.0) * 5.0).toInt().coerceIn(6, 10)
+                mapped
+            }
+        }
+    }
+    
+    /**
+     * Wysyła komendę SS z interwałem (5 razy co 200ms) aby uniknąć utraty pakietów.
+     * Jeśli przyjdzie nowa zmiana stanu, przerywa aktualny interwał i zaczyna nowy.
+     */
+    private fun sendSpeedWithInterval(left: Int, right: Int, winch: Int) {
+        // Anuluj poprzedni job jeśli istnieje (przerywamy aktualny interwał)
+        currentSpeedSendJob?.cancel()
+        
+        // Konwertuj wartości na format kontrolera (1-10)
+        val leftConverted = convertSpeedToControllerFormat(left)
+        val rightConverted = convertSpeedToControllerFormat(right)
+        
+        // Uruchom nowy job z interwałem
+        currentSpeedSendJob = viewModelScope.launch {
+            repeat(SS_REPEAT_COUNT) {
+                val sNum = nextSNum()
+                SocketRepository.send(
+                    SocketCommand.SetSpeed(
+                        left = leftConverted.toDouble(),
+                        right = rightConverted.toDouble(),
+                        winch = winch,
+                        sNum = sNum
+                    )
+                )
+                Log.d("ControllerViewModel", "📤 SS sent: left=$leftConverted, right=$rightConverted, winch=$winch, sNum=$sNum (${it + 1}/$SS_REPEAT_COUNT)")
+                
+                // Czekaj przed następnym wysłaniem (tylko jeśli to nie ostatnia iteracja)
+                if (it < SS_REPEAT_COUNT - 1) {
+                    delay(SS_REPEAT_INTERVAL_MS)
+                }
+            }
+        }
+    }
 
     fun sendSpeed(left: Double, right: Double) {
         viewModelScope.launch {
-            currentSpeed = ((left + right) / 2.0).toFloat()
-            SocketRepository.send(SocketCommand.SetSpeed(left, right, winchState, nextSNum()))
+            // Konwertuj Double na Int (wartości z sliderów są -80..80)
+            val leftInt = left.toInt()
+            val rightInt = right.toInt()
+            currentSpeed = ((leftInt + rightInt) / 2.0).toFloat()
+            // Wyślij z interwałem
+            sendSpeedWithInterval(leftInt, rightInt, winchState)
         }
     }
 
