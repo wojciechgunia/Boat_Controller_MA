@@ -103,7 +103,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     // Mechanizm wysyłania SS z interwałem
     private var currentSpeedSendJob: Job? = null
     private val SS_REPEAT_COUNT = 5 // Liczba powtórzeń wiadomości SS
-    private val SS_REPEAT_INTERVAL_MS = 200L // Interwał między powtórzeniami (ms)
+    private val SS_REPEAT_INTERVAL_MS = 400L // Interwał między powtórzeniami (ms)
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -331,6 +331,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             val leftInt = left.toInt()
             val rightInt = right.toInt()
             currentSpeed = ((leftInt + rightInt) / 2.0).toFloat()
+            Log.d("ControllerViewModel", "🚢 sendSpeed called: left=$leftInt, right=$rightInt, winch=$winchState")
             // Wyślij z interwałem
             sendSpeedWithInterval(leftInt, rightInt, winchState)
         }

@@ -410,7 +410,39 @@ void handle_tcp_command(const String& line) {
     Serial.print(winch_state);
     Serial.println(" | Przekazuję przez LoRa...");
     
-    // Odpowiedź może być poprzez kolejne PA z LoRa
+    // NATYCHMIAST wyślij przez LoRa (nie czekaj na loop())
+    // To zapewnia, że komenda Stop i inne zmiany są natychmiast przekazywane
+    sequence_counter++;
+    String loraMessage = "SS:";
+    loraMessage += String(motor_left_value);
+    loraMessage += ":";
+    loraMessage += String(motor_right_value);
+    loraMessage += ":";
+    loraMessage += String(winch_state);
+    loraMessage += ":";
+    loraMessage += String(sequence_counter);
+    loraMessage += ":SS";
+    
+    LoRa.beginPacket();
+    LoRa.print(loraMessage);
+    LoRa.endPacket();
+    
+    packets_sent++;
+    
+    Serial.print("[NADANO][LORA][SS] left=");
+    Serial.print(motor_left_value);
+    Serial.print(", right=");
+    Serial.print(motor_right_value);
+    Serial.print(", winch=");
+    Serial.print(winch_state);
+    Serial.print(" (");
+    if (winch_state == 0) Serial.print("UP");
+    else if (winch_state == 1) Serial.print("STOP");
+    else if (winch_state == 2) Serial.print("DOWN");
+    Serial.print("), seq=");
+    Serial.print(sequence_counter);
+    Serial.print(" | Wysłano łącznie: ");
+    Serial.println(packets_sent);
   } else if (cmd == "SA") {
     // Set Action – SA:action:payload:sNum:SA
     // UWAGA: Zwijarka jest teraz w SS, nie w SA
@@ -460,12 +492,9 @@ void handle_tcp_command(const String& line) {
 }
 
 void send_motor_control() {
-  // Wysyłamy tylko jeśli wartości są różne od neutral (5)
-  // Jeśli oba silniki są na neutral (5) i zwijarka jest wyłączona (1), nie wysyłamy (żeby nie spamować)
-  if (motor_left_value == 5 && motor_right_value == 5 && winch_state == 1) {
-    // Wszystko na neutral - nie wysyłamy
-    return;
-  }
+  // UWAGA: Gdy przychodzi SS przez TCP, od razu wysyłamy przez LoRa (w handle_tcp_command).
+  // Ta funkcja jest wywoływana w loop() okresowo, ale teraz głównie dla kompatybilności.
+  // Nie blokujemy wysyłania gdy wartości są na neutral, bo komenda Stop musi być przekazana.
   
   sequence_counter++;
   
