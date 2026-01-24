@@ -284,34 +284,16 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     
     /**
      * Konwertuje wartość prędkości z zakresu aplikacji mobilnej (-80..80) na format dla kontrolera (0..100).
-     * ROZSZERZONY zakres dla większej precyzji - więcej stopni pozwala na drobniejsze zmiany suwakiem.
-     * 
-     * Mapowanie:
-     * - 0 = stop (neutral)
-     * - 1-40 = reverse (wstecz) - 40 stopni dla drobnych zmian
-     * - 41-50 = neutral (stop) - alternatywa dla 0
-     * - 51-100 = forward (przód) - 50 stopni dla drobnych zmian
-     * 
-     * Na Raspberry Pi wartości 0-100 są mapowane na 0-10, a potem na PWM.
-     * Format dla ESC Hobbywing 880 QuickRun:
-     * - 5.0% = max reverse, 6.8% = neutral (dostrojony), 10.0% = max forward
+     * Proste mapowanie liniowe:
+     * - -80 -> 0 (max dół)
+     * - 0 -> 50 (środek/neutral)
+     * - 80 -> 100 (max góra)
      */
     private fun convertSpeedToControllerFormat(speed: Int): Int {
-        return when {
-            speed == 0 -> 0 // Stop (neutral)
-            speed < 0 -> {
-                // Reverse: -80..-1 -> 1..40 (40 stopni dla drobnych zmian)
-                // speed = -80 -> 1 (max reverse), speed = -1 -> 40 (min reverse)
-                val mapped = (41.0 + (speed / 80.0) * 40.0).toInt().coerceIn(1, 40)
-                mapped
-            }
-            else -> {
-                // Forward: 1..80 -> 51..100 (50 stopni dla drobnych zmian)
-                // speed = 1 -> 51 (min forward), speed = 80 -> 100 (max forward)
-                val mapped = (50.0 + (speed / 80.0) * 50.0).toInt().coerceIn(51, 100)
-                mapped
-            }
-        }
+        // Mapowanie liniowe: -80..80 -> 0..100
+        // Wzór: ((speed + 80) / 160) * 100 = ((speed + 80) / 1.6)
+        val mapped = ((speed + 80) / 1.6).toInt().coerceIn(0, 100)
+        return mapped
     }
     
     /**
