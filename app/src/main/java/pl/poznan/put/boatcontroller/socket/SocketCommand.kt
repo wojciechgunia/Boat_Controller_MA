@@ -4,8 +4,8 @@ sealed class SocketCommand {
     object GetBoatInformation : SocketCommand()
 
     data class SetSpeed(
-        val left: Double,
-        val right: Double,
+        val left: Int, // 0-10 (0 = stop/neutral, 1-4 = reverse, 5 = neutral, 6-10 = forward)
+        val right: Int, // 0-10
         val winch: Int, // 0 = góra, 1 = wyłączony, 2 = dół
         val sNum: Int
     ) : SocketCommand()

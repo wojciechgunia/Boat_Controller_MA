@@ -10,6 +10,7 @@ object SocketParser {
                 msg.startsWith("SI:") -> parseSI(msg)
                 msg.startsWith("WI:") -> parseWI(msg)
                 msg.startsWith("LI:") -> parseLI(msg)
+                msg.startsWith("ACK:") -> parseACK(msg)
                 else -> null
             }
         } catch (e: Exception) {
@@ -43,10 +44,13 @@ object SocketParser {
         val p = msg.split(":")
         if (p.size < 6) return null
 
+        // Format: PA:lon:lat:speed_cm_s:sNum:PA
+        // lon/lat jako Double (duża dokładność GPS)
+        // speed jest w cm/s jako Int
         return SocketEvent.PositionActualisation(
             lon = p[1].toDoubleOrNull() ?: 0.0,
             lat = p[2].toDoubleOrNull() ?: 0.0,
-            speed = p[3].toDoubleOrNull() ?: 0.0,
+            speed = p[3].toIntOrNull() ?: 0, // cm/s
             sNum = p[4].toIntOrNull() ?: 0
         )
     }
@@ -62,10 +66,10 @@ object SocketParser {
         
         // Parsuj wszystkie wartości (powinno być 12 wartości)
         if (magData.size < 12) {
-            // Jeśli brakuje danych, wypełnij zerami
+            // Jeśli brakuje danych, wypełnij zerami (jako Int, nie "0.0")
             val filledData = magData.toMutableList()
             while (filledData.size < 12) {
-                filledData.add("0.0")
+                filledData.add("0")
             }
             return parseSensorData(filledData, p[2])
         }
@@ -74,30 +78,34 @@ object SocketParser {
     }
     
     private fun parseSensorData(magData: List<String>, depthStr: String): SocketEvent.SensorInformation {
-        // Akcelerometr (g) - indeksy 0, 1, 2
-        val accelX = magData[0].toDoubleOrNull() ?: 0.0
-        val accelY = magData[1].toDoubleOrNull() ?: 0.0
-        val accelZ = magData[2].toDoubleOrNull() ?: 0.0
+        // Format: wartości są w formacie Int
+        // - accel/gyro/mag/depth: *100 dla precyzji do 2 miejsc po przecinku
+        // - kąty: jako Int (bez miejsc po przecinku)
         
-        // Żyroskop (deg/s) - indeksy 3, 4, 5
-        val gyroX = magData[3].toDoubleOrNull() ?: 0.0
-        val gyroY = magData[4].toDoubleOrNull() ?: 0.0
-        val gyroZ = magData[5].toDoubleOrNull() ?: 0.0
+        // Akcelerometr (g) - indeksy 0, 1, 2 (*100)
+        val accelX = magData[0].toIntOrNull() ?: 0
+        val accelY = magData[1].toIntOrNull() ?: 0
+        val accelZ = magData[2].toIntOrNull() ?: 0
         
-        // Magnetometr (µT) - indeksy 6, 7, 8
-        val magX = magData[6].toDoubleOrNull() ?: 0.0
-        val magY = magData[7].toDoubleOrNull() ?: 0.0
-        val magZ = magData[8].toDoubleOrNull() ?: 0.0
+        // Żyroskop (deg/s) - indeksy 3, 4, 5 (*100)
+        val gyroX = magData[3].toIntOrNull() ?: 0
+        val gyroY = magData[4].toIntOrNull() ?: 0
+        val gyroZ = magData[5].toIntOrNull() ?: 0
         
-        // Kąty (deg) - indeksy 9, 10, 11
-        val angleX = magData[9].toDoubleOrNull() ?: 0.0
-        val angleY = magData[10].toDoubleOrNull() ?: 0.0
-        val angleZ = magData[11].toDoubleOrNull() ?: 0.0
+        // Magnetometr (µT) - indeksy 6, 7, 8 (*100)
+        val magX = magData[6].toIntOrNull() ?: 0
+        val magY = magData[7].toIntOrNull() ?: 0
+        val magZ = magData[8].toIntOrNull() ?: 0
         
-        // Głębokość (m) - może być "todo" lub liczba
+        // Kąty (deg) - indeksy 9, 10, 11 (jako Int, bez *100)
+        val angleX = magData[9].toIntOrNull() ?: 0
+        val angleY = magData[10].toIntOrNull() ?: 0
+        val angleZ = magData[11].toIntOrNull() ?: 0
+        
+        // Głębokość (m) - może być "todo" lub liczba jako Int (*100)
         val depth = when {
-            depthStr.equals("todo", ignoreCase = true) -> 0.0
-            else -> depthStr.toDoubleOrNull() ?: 0.0
+            depthStr.equals("todo", ignoreCase = true) -> 0
+            else -> depthStr.toIntOrNull() ?: 0
         }
         
         return SocketEvent.SensorInformation(
@@ -132,6 +140,21 @@ object SocketParser {
 
         return SocketEvent.LostInformation(
             sNum = p[1].toInt()
+        )
+    }
+    
+    private fun parseACK(msg: String): SocketEvent? {
+        // Format: ACK:SM:sNum:ACK lub ACK:SA:sNum:ACK
+        if (!msg.endsWith(":ACK")) return null
+        val p = msg.split(":")
+        if (p.size < 4) return null
+        
+        val commandType = p[1] // "SM" lub "SA"
+        val sNum = p[2].toIntOrNull() ?: 0
+        
+        return SocketEvent.CommandAck(
+            commandType = commandType,
+            sNum = sNum
         )
     }
 }

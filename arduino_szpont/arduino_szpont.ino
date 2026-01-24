@@ -289,13 +289,18 @@ void send_position_actualisation_from_last() {
     Serial.println("[PA] GPS bez fixa (0.0, 0.0) - wysyłam do aplikacji (pozycja oceanu)");
   }
 
-  // Wyślij PA do aplikacji (używamy prędkości z wiadomości PA z Raspberry Pi)
+  // Wyślij PA do aplikacji
+  // Format: PA:lon:lat:speed_cm_s:sNum:PA
+  // lon/lat jako Double (duża dokładność GPS)
+  // speed jako Int w cm/s (zamiast float w m/s)
+  int speed_cm_s = (int)(lastSensorData.speed_ms * 100.0); // konwersja m/s -> cm/s
+  
   String response = "PA:";
   response += String(lastSensorData.longitude, 5);
   response += ":";
   response += String(lastSensorData.latitude, 5);
   response += ":";
-  response += String(lastSensorData.speed_ms, 2);
+  response += String(speed_cm_s); // Int w cm/s
   response += ":";
   response += String(lastSensorData.sequence);
   response += ":PA";
@@ -306,18 +311,23 @@ void send_position_actualisation_from_last() {
   Serial.print(", lat=");
   Serial.print(lastSensorData.latitude, 5);
   Serial.print(", speed=");
+  Serial.print(speed_cm_s);
+  Serial.print(" cm/s (");
   Serial.print(lastSensorData.speed_ms, 2);
-  Serial.print(" m/s, seq=");
+  Serial.print(" m/s), seq=");
   Serial.println(lastSensorData.sequence);
 }
 
 // SI:mag:dep:SI – przekazujemy wiadomość SI z Raspberry Pi
+// Format oczekiwany z RPi: SI:accelX,accelY,accelZ,gyroX,gyroY,gyroZ,magX,magY,magZ,angleX,angleY,angleZ:depth:SI
+// gdzie: accel/gyro/mag/depth jako Int (*100 dla precyzji do 2 miejsc po przecinku)
+//        kąty (angleX/Y/Z) jako Int (bez miejsc po przecinku)
 void send_sensor_information_from_last() {
   if (!hasLastSensorData || lastSensorData.sensor_info.length() == 0) {
     return;
   }
   
-  // Przekaż wiadomość SI bezpośrednio z Raspberry Pi
+  // Przekaż wiadomość SI bezpośrednio z Raspberry Pi (formatowanie po stronie RPi)
   tcp_send_line(lastSensorData.sensor_info);
   // Komunikat już jest w tcp_send_line()
 }
@@ -356,39 +366,17 @@ void handle_tcp_command(const String& line) {
     double right = rightStr.toDouble();
     int winch = winchStr.toInt();
 
-    // Mapowanie wartości z aplikacji mobilnej na format dla kontrolera (1-10)
-    // Aplikacja mobilna konwertuje -80..80 na 1..10 przed wysłaniem,
-    // ale obsługujemy też surowe wartości -80..80 dla kompatybilności wstecznej
-    auto mapSpeed = [](double v) -> int {
-      // Jeśli wartość jest już w zakresie 1-10, przekaż dalej
-      if (v >= 1.0 && v <= 10.0) {
-        return (int)round(v);
-      }
-      
-      // Mapowanie surowych wartości -80..80 na 1..10 (dla kompatybilności wstecznej)
-      // -80 -> 1 (reverse max), 0 -> 5 (neutral), 80 -> 10 (forward max)
-      // Format dla ESC: 5 = neutral (stop), 1-4 = reverse, 6-10 = forward
-      if (v == 0.0) {
-        return 5; // Neutral (stop)
-      }
-      
-      if (v < 0.0) {
-        // Reverse: -80..-1 -> 1..4
-        int mapped = (int)round(5.0 + (v / 80.0) * 4.0);
-        if (mapped < 1) mapped = 1;
-        if (mapped > 4) mapped = 4;
-        return mapped;
-      } else {
-        // Forward: 1..80 -> 6..10
-        int mapped = (int)round(5.0 + (v / 80.0) * 5.0);
-        if (mapped < 6) mapped = 6;
-        if (mapped > 10) mapped = 10;
-        return mapped;
-      }
-    };
-
-    motor_left_value = mapSpeed(left);
-    motor_right_value = mapSpeed(right);
+    // Aplikacja mobilna już konwertuje wartości na format 0-10 przed wysłaniem
+    // Arduino tylko przekazuje wartości bez mapowania (0-10)
+    // Format: 0 lub 5 = stop, 1-4 = reverse, 6-10 = forward
+    motor_left_value = (int)round(left);
+    motor_right_value = (int)round(right);
+    
+    // Walidacja zakresu (0-10)
+    if (motor_left_value < 0) motor_left_value = 0;
+    if (motor_left_value > 10) motor_left_value = 10;
+    if (motor_right_value < 0) motor_right_value = 0;
+    if (motor_right_value > 10) motor_right_value = 10;
     
     // Aktualizuj stan zwijarki tylko jeśli się zmienił
     if (winch >= 0 && winch <= 2 && winch_state != winch) {
@@ -582,6 +570,8 @@ void receive_sensor_data() {
     // PA - Position Actualisation
     if (cmd == "PA" && message.endsWith(":PA")) {
       // Format: PA:lon:lat:speed:s_num:PA
+      // lon/lat jako Double (duża dokładność GPS)
+      // speed może być jako float (m/s) z RPi lub Int (cm/s) - obsługujemy oba formaty
       int p1 = firstColon + 1;
       int p2 = message.indexOf(':', p1);
       int p3 = message.indexOf(':', p2 + 1);
@@ -590,13 +580,23 @@ void receive_sensor_data() {
       if (p2 > 0 && p3 > 0 && p4 > 0) {
         float lon = message.substring(p1, p2).toFloat();
         float lat = message.substring(p2 + 1, p3).toFloat();
-        float speed = message.substring(p3 + 1, p4).toFloat();
+        String speedStr = message.substring(p3 + 1, p4);
         unsigned long seq = message.substring(p4 + 1, message.length() - 3).toInt();
+        
+        // Obsługa speed - może być jako float (m/s) lub Int (cm/s)
+        float speed_ms;
+        if (speedStr.indexOf('.') >= 0) {
+          // Format float (m/s) - konwersja z RPi
+          speed_ms = speedStr.toFloat();
+        } else {
+          // Format Int (cm/s) - konwersja na m/s
+          speed_ms = speedStr.toInt() / 100.0;
+        }
         
         hasLastSensorData = true;
         lastSensorData.longitude = lon;
         lastSensorData.latitude = lat;
-        lastSensorData.speed_ms = speed;
+        lastSensorData.speed_ms = speed_ms;
         lastSensorData.sequence = seq;
         
         Serial.print("[ODEBRANO][LORA][PA] lon=");
@@ -604,11 +604,11 @@ void receive_sensor_data() {
         Serial.print(", lat=");
         Serial.print(lat, 5);
         Serial.print(", speed=");
-        Serial.print(speed, 2);
+        Serial.print(speed_ms, 2);
         Serial.print(" m/s, seq=");
         Serial.println(seq);
         
-        // Przekaż do aplikacji przez TCP
+        // Przekaż do aplikacji przez TCP (z konwersją speed na cm/s)
         if (tcpClientConnected && tcpClient.connected()) {
           send_position_actualisation_from_last();
         }
@@ -616,20 +616,47 @@ void receive_sensor_data() {
     }
     // SI - Sensor Information
     else if (cmd == "SI" && message.endsWith(":SI")) {
-      // Format: SI:mag:dep:SI
-      // Przechowujemy całą wiadomość i przekazujemy do aplikacji
+      // Format: SI:accelX,accelY,accelZ,gyroX,gyroY,gyroZ,magX,magY,magZ,angleX,angleY,angleZ:depth:SI
+      // gdzie: accel/gyro/mag/depth jako Int (*100), kąty jako Int (bez *100)
+      // Przechowujemy całą wiadomość i przekazujemy do aplikacji (formatowanie po stronie RPi)
       hasLastSensorData = true;
       lastSensorData.sensor_info = message;
       
       // Wyświetl uproszczone informacje
+      // Format: SI:accelX,accelY,accelZ,gyroX,gyroY,gyroZ,magX,magY,magZ,angleX,angleY,angleZ:depth:SI
       int p1 = firstColon + 1;
       int p2 = message.indexOf(':', p1);
       if (p2 > p1) {
-        String magData = message.substring(p1, p2);
-        Serial.print("[ODEBRANO][LORA][SI] mag=");
-        Serial.print(magData.substring(0, min(30, int(magData.length()))));
-        if (magData.length() > 30) Serial.print("...");
-        Serial.println();
+        String sensorData = message.substring(p1, p2); // Wszystkie dane z czujników (accel,gyro,mag,angles)
+        // Parsuj wartości aby wyświetlić magnetometr osobno
+        // Format: accelX,accelY,accelZ,gyroX,gyroY,gyroZ,magX,magY,magZ,angleX,angleY,angleZ
+        // Indeksy: 0,1,2,3,4,5,6,7,8,9,10,11
+        // Przecinki: po 0,1,2,3,4,5,6,7,8,9,10 (11 wartości = 10 przecinków)
+        // magX jest na indeksie 6, więc po 6 przecinkach (po gyroZ)
+        int commaCount = 0;
+        int magStart = -1, magEnd = -1;
+        for (int i = 0; i < sensorData.length(); i++) {
+          if (sensorData.charAt(i) == ',') {
+            commaCount++;
+            if (commaCount == 6) magStart = i + 1; // Po 6. przecinku = po gyroZ, przed magX
+            if (commaCount == 9) magEnd = i; // Po 9. przecinku = po magZ, przed angleX
+          }
+        }
+        
+        if (magStart > 0 && magEnd > magStart) {
+          String magValues = sensorData.substring(magStart, magEnd);
+          Serial.print("[ODEBRANO][LORA][SI] accel/gyro/mag/angles=");
+          Serial.print(sensorData.substring(0, min(40, int(sensorData.length()))));
+          if (sensorData.length() > 40) Serial.print("...");
+          Serial.print(" | magnetometr (magX,magY,magZ)=");
+          Serial.println(magValues);
+        } else {
+          // Fallback - wyświetl wszystkie dane
+          Serial.print("[ODEBRANO][LORA][SI] dane=");
+          Serial.print(sensorData.substring(0, min(50, int(sensorData.length()))));
+          if (sensorData.length() > 50) Serial.print("...");
+          Serial.println();
+        }
       } else {
         Serial.println("[ODEBRANO][LORA][SI] (pełne dane z czujników)");
       }
