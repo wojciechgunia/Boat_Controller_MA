@@ -88,6 +88,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -278,6 +283,21 @@ class ControllerActivity: ComponentActivity() {
         var isSyncOn by remember { mutableStateOf(false) }
         val batteryLevel = viewModel.externalBatteryLevel.value ?: 100
         
+        // Throttling dla wysyłania wiadomości - maksymalnie co 100ms
+        val scope = remember { CoroutineScope(Dispatchers.Main) }
+        var lastSendJob by remember { mutableStateOf<Job?>(null) }
+        
+        fun sendEnginePowerThrottled(viewModel: ControllerViewModel) {
+            // Anuluj poprzednie zadanie jeśli jeszcze nie zostało wykonane
+            lastSendJob?.cancel()
+            
+            // Utwórz nowe zadanie z opóźnieniem 100ms
+            lastSendJob = scope.launch {
+                delay(100)
+                sendEnginePower(viewModel)
+            }
+        }
+        
         // Obsługa niskiej baterii - warning przy 20%, error przy 10%
         // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
         var lastBatteryWarning by remember { mutableStateOf<Int?>(null) }
@@ -322,7 +342,7 @@ class ControllerActivity: ComponentActivity() {
                 onValueChange = {
                     if(viewModel.leftEnginePower != it) {
                         viewModel.leftEnginePower = it
-                        sendEnginePower(viewModel)
+                        sendEnginePowerThrottled(viewModel)
                         isSyncOn = false
                     }},
                 modifier = Modifier
@@ -435,7 +455,7 @@ class ControllerActivity: ComponentActivity() {
                         if(isSyncOn) {
                             viewModel.leftEnginePower = it
                         }
-                        sendEnginePower(viewModel)
+                        sendEnginePowerThrottled(viewModel)
                     }},
                 modifier = Modifier
                     .weight(1f)
