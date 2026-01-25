@@ -6,6 +6,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -30,6 +33,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -117,6 +121,8 @@ import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.HttpStreamView
+import pl.poznan.put.boatcontroller.templates.InfoPopup
+import pl.poznan.put.boatcontroller.templates.InfoPopupType
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
@@ -270,13 +276,46 @@ class ControllerActivity: ComponentActivity() {
         val tabs = listOf(ControllerTab.MAP, ControllerTab.SONAR, ControllerTab.SENSORS, ControllerTab.CAMERA)
         val isTablet = isTablet(this)
         var isSyncOn by remember { mutableStateOf(false) }
+        val batteryLevel = viewModel.externalBatteryLevel.value ?: 100
+        
+        // Obsługa niskiej baterii - warning przy 20%, error przy 10%
+        // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
+        var lastBatteryWarning by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(batteryLevel) {
+            when {
+                batteryLevel <= 10 && lastBatteryWarning != batteryLevel -> {
+                    viewModel.showWarning("Krytycznie niski poziom baterii: ${batteryLevel}%", InfoPopupType.ERROR)
+                    lastBatteryWarning = batteryLevel
+                }
+                batteryLevel in 11..20 && lastBatteryWarning != batteryLevel -> {
+                    viewModel.showWarning("Niski poziom baterii: ${batteryLevel}%", InfoPopupType.WARNING)
+                    lastBatteryWarning = batteryLevel
+                }
+                batteryLevel > 20 -> {
+                    // Reset gdy bateria wzrośnie powyżej 20%
+                    lastBatteryWarning = null
+                }
+            }
+        }
 
-        Row(modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)) {
-            FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
-                viewModel.openPOIDialog = false
-            })
+        Box(modifier = Modifier.fillMaxSize()) {
+            // InfoPopup dla warningów i błędów (na górze ekranu) - tylko raz na całym activity
+            InfoPopup(
+                message = viewModel.warningMessage ?: "",
+                type = viewModel.warningType ?: InfoPopupType.WARNING,
+                isVisible = viewModel.warningMessage != null,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 16.dp)
+            )
+            
+            Row(modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)) {
+                FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
+                    viewModel.openPOIDialog = false
+                })
 
             PowerSlider(
                 value = viewModel.leftEnginePower,
@@ -404,6 +443,7 @@ class ControllerActivity: ComponentActivity() {
                 rightSide = true,
                 isTablet = isTablet,
             )
+            }
         }
     }
 
@@ -479,8 +519,8 @@ class ControllerActivity: ComponentActivity() {
                                 if (segValue in -75..70) "$segValue" else "",
                                 size.width - ((trackWidth/2)+5.dp).toPx(),
                                 top + 3.dp.toPx(),
-                                android.graphics.Paint().apply {
-                                    color = android.graphics.Color.BLACK
+                                Paint().apply {
+                                    color = AndroidColor.BLACK
                                     textSize = 24f
                                 }
                             )
@@ -561,8 +601,29 @@ class ControllerActivity: ComponentActivity() {
         val layersMode = viewModel.layersMode.value
         val homePosition = viewModel.homePosition
         val phonePosition = viewModel.phonePosition.value
+        val batteryLevel = viewModel.externalBatteryLevel.value ?: 100
         val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
         val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
+        
+        // Obsługa niskiej baterii - warning przy 20%, error przy 10%
+        // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
+        var lastBatteryWarning by remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(batteryLevel) {
+            when {
+                batteryLevel <= 10 && lastBatteryWarning != batteryLevel -> {
+                    viewModel.showWarning("Krytycznie niski poziom baterii: ${batteryLevel}%", InfoPopupType.ERROR)
+                    lastBatteryWarning = batteryLevel
+                }
+                batteryLevel in 11..20 && lastBatteryWarning != batteryLevel -> {
+                    viewModel.showWarning("Niski poziom baterii: ${batteryLevel}%", InfoPopupType.WARNING)
+                    lastBatteryWarning = batteryLevel
+                }
+                batteryLevel > 20 -> {
+                    // Reset gdy bateria wzrośnie powyżej 20%
+                    lastBatteryWarning = null
+                }
+            }
+        }
 
         LaunchedEffect(Unit) {
             if (!locationPermissionState.status.isGranted) {
@@ -848,6 +909,29 @@ class ControllerActivity: ComponentActivity() {
                         MapLayersVisibilityMode.NONE -> Icon(Icons.Default.Visibility, tint = Color.White, contentDescription = "Both visible")
                     }
                 }
+                
+                // Tymczasowy przycisk do testowania baterii (tylko do testów)
+                FloatingActionButton(
+                    onClick = { 
+                        viewModel.simulateBatteryDecrease()
+                        if ((viewModel.externalBatteryLevel.value ?: 100) <= 0) {
+                            viewModel.resetBattery()
+                        }
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = Color.Gray
+                ) {
+                    Text(
+                        text = "🔋",
+                        fontSize = 20.sp,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                }
             }
         }
     }
@@ -878,7 +962,6 @@ class ControllerActivity: ComponentActivity() {
     @Composable
     fun SensorsTab(viewModel: ControllerViewModel) {
         val data = viewModel.sensorsData
-        val winchState = viewModel.winchState
         
         Box(
             modifier = Modifier
@@ -890,14 +973,6 @@ class ControllerActivity: ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(0.dp)
             ) {
-                // Przełącznik trójstopniowy: Silnik zwijarki
-                item {
-                    WinchControlSwitch(
-                        currentState = winchState,
-                        onStateChange = { viewModel.updateWinchState(it) }
-                    )
-                }
-                
                 // Sekcja: Głębokość (przeniesiona wyżej)
                 item {
                     SensorSection(
@@ -955,6 +1030,195 @@ class ControllerActivity: ComponentActivity() {
                         )
                     )
                 }
+            }
+        }
+    }
+    
+    @Composable
+    fun WinchControlSwitchVertical(
+        currentState: Int, // 0 = góra, 1 = wyłączony, 2 = dół
+        onStateChange: (Int) -> Unit,
+        modifier: Modifier = Modifier
+    ) {
+        Column(
+            modifier = modifier
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = 8.dp, bottomEnd = 8.dp)
+                )
+                .padding(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            // Przycisk: Góra (na górze)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .border(
+                        width = 0.dp,
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(0.dp)
+                    )
+            ) {
+                Button(
+                    onClick = { onStateChange(0) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentState == 0) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(
+                        topStart = 8.dp,
+                        bottomStart = 0.dp,
+                        topEnd = 8.dp,
+                        bottomEnd = 0.dp
+                    ),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowUpward,
+                            contentDescription = "Góra",
+                            modifier = Modifier.size(24.dp),
+                            tint = if (currentState == 0) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Góra",
+                            fontSize = 12.sp,
+                            color = if (currentState == 0) 
+                                MaterialTheme.colorScheme.onPrimary 
+                            else 
+                                MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                // Border pionowy na dole
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline)
+                )
+            }
+            
+            // Przycisk: Wyłączony (w środku)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .border(
+                        width = 0.dp,
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(0.dp)
+                    )
+            ) {
+                Button(
+                    onClick = { onStateChange(1) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentState == 1) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(0.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.stop),
+                        contentDescription = "Wyłączony",
+                        modifier = Modifier.size(24.dp),
+                        tint = if (currentState == 1) 
+                            MaterialTheme.colorScheme.onPrimary 
+                        else 
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Stop",
+                        fontSize = 12.sp,
+                        color = if (currentState == 1) 
+                            MaterialTheme.colorScheme.onPrimary 
+                        else 
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                }
+                // Border pionowy na dole
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline)
+                )
+            }
+            
+            // Przycisk: Dół (na dole)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                Button(
+                    onClick = { onStateChange(2) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (currentState == 2) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.surface
+                    ),
+                    shape = RoundedCornerShape(
+                        topStart = 0.dp,
+                        bottomStart = 8.dp,
+                        topEnd = 0.dp,
+                        bottomEnd = 8.dp
+                    ),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDownward,
+                        contentDescription = "Dół",
+                        modifier = Modifier.size(24.dp),
+                        tint = if (currentState == 2) 
+                            MaterialTheme.colorScheme.onPrimary 
+                        else 
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Dół",
+                        fontSize = 12.sp,
+                        color = if (currentState == 2) 
+                            MaterialTheme.colorScheme.onPrimary 
+                        else 
+                            MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
             }
         }
     }
@@ -1155,22 +1419,40 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun CameraTab(viewModel: ControllerViewModel) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            HttpStreamView(
-                streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getUrlForTab(ControllerTab.CAMERA),
-                connectionState = viewModel.httpConnectionState,
-                errorMessage = viewModel.httpErrorMessage,
-                label = "kamery",
-                config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.CAMERA
-            )
-            
-            // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
-            ConnectionStatusIndicator(
-                connectionState = viewModel.httpConnectionState,
-                errorMessage = viewModel.httpErrorMessage,
+        val winchState = viewModel.winchState
+        
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Widok kamery - 85% szerokości
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
+                    .weight(0.85f)
+                    .fillMaxSize()
+            ) {
+                HttpStreamView(
+                    streamUrl = pl.poznan.put.boatcontroller.socket.HttpStreamRepository.getUrlForTab(ControllerTab.CAMERA),
+                    connectionState = viewModel.httpConnectionState,
+                    errorMessage = viewModel.httpErrorMessage,
+                    label = "kamery",
+                    config = pl.poznan.put.boatcontroller.socket.HttpStreamConfigs.CAMERA
+                )
+                
+                // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
+                ConnectionStatusIndicator(
+                    connectionState = viewModel.httpConnectionState,
+                    errorMessage = viewModel.httpErrorMessage,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                )
+            }
+            
+            // Panel sterowania zwijarki - 15% szerokości, pionowy
+            WinchControlSwitchVertical(
+                currentState = winchState,
+                onStateChange = { viewModel.updateWinchState(it) },
+                modifier = Modifier
+                    .weight(0.15f)
+                    .fillMaxHeight()
             )
         }
     }
@@ -1244,7 +1526,7 @@ class ControllerActivity: ComponentActivity() {
             phoneDrawable.intrinsicWidth,
             phoneDrawable.intrinsicHeight,
         ).apply {
-            val canvas = android.graphics.Canvas(this)
+            val canvas = AndroidCanvas(this)
             phoneDrawable.setBounds(0, 0, canvas.width, canvas.height)
             phoneDrawable.draw(canvas)
         }
@@ -1254,7 +1536,7 @@ class ControllerActivity: ComponentActivity() {
             shipDrawable.intrinsicWidth,
             shipDrawable.intrinsicHeight
         ).apply {
-            val canvas = android.graphics.Canvas(this)
+            val canvas = AndroidCanvas(this)
             shipDrawable.setBounds(0, 0, canvas.width, canvas.height)
             shipDrawable.draw(canvas)
         }
@@ -1272,7 +1554,7 @@ class ControllerActivity: ComponentActivity() {
             homeDrawable.intrinsicWidth,
             homeDrawable.intrinsicHeight,
         ).apply {
-            val canvas = android.graphics.Canvas(this)
+            val canvas = AndroidCanvas(this)
             homeDrawable.setBounds(0, 0, canvas.width, canvas.height)
             homeDrawable.draw(canvas)
         }

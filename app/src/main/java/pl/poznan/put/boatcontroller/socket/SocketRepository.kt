@@ -5,7 +5,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -17,6 +20,17 @@ object SocketRepository {
     
     // Eksportujemy status połączenia dla UI
     val connectionState = service.connectionState
+    
+    // Wspólny stan baterii (może być aktualizowany z socketu lub lokalnie)
+    private val _batteryLevel = MutableStateFlow<Int?>(100)
+    val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()
+    
+    /**
+     * Aktualizuje poziom baterii (może być wywołane z socketu lub lokalnie)
+     */
+    fun updateBatteryLevel(level: Int?) {
+        _batteryLevel.value = level?.coerceIn(0, 100)
+    }
 
     // Usunięto śledzenie sekwencji dla realtime - zgodnie z optymalizacją LoRa
     

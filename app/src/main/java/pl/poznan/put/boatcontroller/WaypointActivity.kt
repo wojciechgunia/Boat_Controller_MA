@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,6 +108,8 @@ import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
+import pl.poznan.put.boatcontroller.templates.InfoPopup
+import pl.poznan.put.boatcontroller.templates.InfoPopupType
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
@@ -346,10 +349,31 @@ class WaypointActivity : ComponentActivity() {
         val poi = waypointVm.poiPositions.toList()
         val poiToggle = waypointVm.arePoiVisible
         val phonePosition = waypointVm.phonePosition.value
+        val batteryLevel = waypointVm.externalBatteryLevel.value ?: 100
         val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
         val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
         val mapMode = waypointVm.mapMode
         val isToolbarOpened = waypointVm.isToolbarOpened
+        
+        // Obsługa niskiej baterii - warning przy 20%, error przy 10%
+        // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
+        var lastBatteryWarning = remember { mutableStateOf<Int?>(null) }
+        LaunchedEffect(batteryLevel) {
+            when {
+                batteryLevel <= 10 && lastBatteryWarning.value != batteryLevel -> {
+                    waypointVm.showWarning("Krytycznie niski poziom baterii: ${batteryLevel}%", InfoPopupType.ERROR)
+                    lastBatteryWarning.value = batteryLevel
+                }
+                batteryLevel in 11..20 && lastBatteryWarning.value != batteryLevel -> {
+                    waypointVm.showWarning("Niski poziom baterii: ${batteryLevel}%", InfoPopupType.WARNING)
+                    lastBatteryWarning.value = batteryLevel
+                }
+                batteryLevel > 20 -> {
+                    // Reset gdy bateria wzrośnie powyżej 20%
+                    lastBatteryWarning.value = null
+                }
+            }
+        }
 
         LaunchedEffect(Unit) {
             if (!locationPermissionState.status.isGranted) {
@@ -476,6 +500,16 @@ class WaypointActivity : ComponentActivity() {
                     .fillMaxSize()
                     .systemBarsPadding()
             ) {
+                // InfoPopup dla warningów i błędów
+                InfoPopup(
+                    message = waypointVm.warningMessage ?: "",
+                    type = waypointVm.warningType ?: InfoPopupType.WARNING,
+                    isVisible = waypointVm.warningMessage != null,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
+                )
+                
                 BatteryIndicator(
                     level = waypointVm.externalBatteryLevel.value ?: 0,
                     isCharging = true,
