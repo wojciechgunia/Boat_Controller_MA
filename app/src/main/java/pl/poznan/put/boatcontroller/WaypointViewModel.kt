@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import org.maplibre.android.maps.MapLibreMap
@@ -37,6 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import pl.poznan.put.boatcontroller.socket.SocketRepository
 import pl.poznan.put.boatcontroller.socket.SocketEvent
 import pl.poznan.put.boatcontroller.socket.SocketCommand
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
+import kotlin.math.sqrt
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
@@ -92,15 +97,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     // Używamy wspólnego stanu baterii z SocketRepository
     val externalBatteryLevel: MutableState<Int?> = mutableStateOf(SocketRepository.batteryLevel.value)
-
-    // Stan dla InfoPopup - warningi i błędy
-    var warningMessage by mutableStateOf<String?>(null)
-        private set
-    var warningType by mutableStateOf<pl.poznan.put.boatcontroller.templates.InfoPopupType?>(null)
-        private set
-    
-    // Auto-hide warning po 5 sekundach
-    private var warningHideJob: kotlinx.coroutines.Job? = null
 
     private val seq = AtomicInteger(0)
 
@@ -223,12 +219,14 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     is SocketEvent.WarningInformation -> {
                         Log.w("Socket", "Warning: ${event.infoCode}")
-                        // Wyświetl warning w InfoPopup
                         val message = when (event.infoCode) {
                             "COLLISION" -> "Wykryto kolizję! Zatrzymaj łódkę natychmiast!"
                             else -> "Ostrzeżenie: ${event.infoCode}"
                         }
-                        showWarning(message, pl.poznan.put.boatcontroller.templates.InfoPopupType.WARNING)
+                        InfoPopupManager.show(
+                            message = message,
+                            type = InfoPopupType.WARNING
+                        )
                     }
                     is SocketEvent.LostInformation -> {
                         Log.d("Socket", "Lost info ack for sNum=${event.sNum}")
@@ -243,7 +241,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         // Prosta odległość euklidesowa w stopniach (dla małych odległości)
         val dlat = lat2 - lat1
         val dlon = lon2 - lon1
-        return Math.sqrt(dlat * dlat + dlon * dlon)
+        return sqrt(dlat * dlat + dlon * dlon)
     }
 
     fun initModel() {
@@ -676,30 +674,5 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
             backendApi?.deletePoi(id)
             loadMission()
         }
-    }
-    
-    /**
-     * Wyświetla warning/error w InfoPopup z auto-hide po 5 sekundach
-     */
-    fun showWarning(message: String, type: pl.poznan.put.boatcontroller.templates.InfoPopupType) {
-        warningHideJob?.cancel()
-        warningMessage = message
-        warningType = type
-        
-        // Auto-hide po 5 sekundach
-        warningHideJob = viewModelScope.launch {
-            kotlinx.coroutines.delay(5000)
-            warningMessage = null
-            warningType = null
-        }
-    }
-    
-    /**
-     * Ukrywa warning ręcznie
-     */
-    fun hideWarning() {
-        warningHideJob?.cancel()
-        warningMessage = null
-        warningType = null
     }
 }

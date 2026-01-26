@@ -40,6 +40,8 @@ import pl.poznan.put.boatcontroller.socket.SocketEvent
 import pl.poznan.put.boatcontroller.socket.SocketRepository
 import pl.poznan.put.boatcontroller.socket.SocketCommand
 import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 
 class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
@@ -51,8 +53,25 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     var openPOIDialog by mutableStateOf(false)
     var poiId by mutableIntStateOf(-1)
 
+    // Silniki drona (lewy + prawy), zakres od -80..80 (mapowane do LoRa na zakres 0..100)
     var leftEnginePower by mutableIntStateOf(0)
     var rightEnginePower by mutableIntStateOf(0)
+    // Stan silnika zwijarki: 2 = góra (up), 1 = wyłączony (stop), 0 = dół (down)
+    var winchState by mutableIntStateOf(1) // Domyślnie wyłączony
+    var currentSpeed by mutableFloatStateOf(0.0f)
+        private set
+    // Mechanizm wysyłania SS z burst + keep-alive (optymalizacja LoRa)
+    private var currentSpeedSendJob: Job? = null
+    private var keepAliveJob: Job? = null
+    private val ssBurstCount = 4 // Liczba ramek w burst (3-5)
+    private val ssBurstIntervalMs = 200L // Interwał między ramkami w burst (150-300ms)
+    private val ssKeepAliveIntervalMs = 2500L // Keep-alive co 2-3s
+
+    // Ostatnie wysłane wartości (dla keep-alive)
+    private var lastSentLeft = leftEnginePower
+    private var lastSentRight = rightEnginePower
+    private var lastSentWinch = winchState
+
     var selectedTab by mutableStateOf(ControllerTab.MAP)
 
     private val _mapLibreMapState = mutableStateOf<MapLibreMap?>(null)
@@ -84,7 +103,17 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     // Używamy wspólnego stanu baterii z SocketRepository
     val externalBatteryLevel: MutableState<Int?> = mutableStateOf(SocketRepository.batteryLevel.value)
-    
+
+    var sensorsData by mutableStateOf(ShipSensorsData())
+        private set
+
+    // ===================== HTTP Streams – konfiguracja =====================
+    // Jeden stan połączenia dla aktywnego streamu
+    var httpConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
+        private set
+    var httpErrorMessage by mutableStateOf<String?>(null)
+        private set
+
     init {
         // Obserwuj zmiany baterii z SocketRepository
         viewModelScope.launch {
@@ -111,42 +140,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         SocketRepository.updateBatteryLevel(100)
         Log.d("ControllerViewModel", "🔋 Reset baterii: 100%")
     }
-
-    // Stan dla InfoPopup - warningi i błędy
-    var warningMessage by mutableStateOf<String?>(null)
-        private set
-    var warningType by mutableStateOf<pl.poznan.put.boatcontroller.templates.InfoPopupType?>(null)
-        private set
-    
-    // Auto-hide warning po 5 sekundach
-    private var warningHideJob: kotlinx.coroutines.Job? = null
-
-    var currentSpeed by mutableFloatStateOf(0.0f)
-        private set
-    var sensorsData by mutableStateOf(ShipSensorsData())
-        private set
-
-    // ===================== HTTP Streams – konfiguracja =====================
-    // Jeden stan połączenia dla aktywnego streamu
-    var httpConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
-        private set
-    var httpErrorMessage by mutableStateOf<String?>(null)
-        private set
-    
-    // Stan silnika zwijarki: 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
-    var winchState by mutableIntStateOf(1) // Domyślnie wyłączony
-    
-    // Mechanizm wysyłania SS z burst + keep-alive (optymalizacja LoRa)
-    private var currentSpeedSendJob: Job? = null
-    private var keepAliveJob: Job? = null
-    private val SS_BURST_COUNT = 4 // Liczba ramek w burst (3-5)
-    private val SS_BURST_INTERVAL_MS = 200L // Interwał między ramkami w burst (150-300ms)
-    private val SS_KEEP_ALIVE_INTERVAL_MS = 2500L // Keep-alive co 2-3s
-    
-    // Ostatnie wysłane wartości (dla keep-alive)
-    private var lastSentLeft: Int = 1
-    private var lastSentRight: Int = 1
-    private var lastSentWinch: Int = 1
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -208,10 +201,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         observeSocket()
         observeSocketConnection()
         loadSavedMission()
-        // Uruchom połączenia HTTP stream przy inicjalizacji ViewModel
         HttpStreamRepository.startAll()
-        
-        // Obserwuj stany połączeń
         observeHttpStreamConnections()
     }
     
@@ -256,26 +246,26 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                     is SocketEvent.SensorInformation -> {
                         // Konwersja z Int na Double
                         // accel/gyro/mag/depth: *100, kąty: bez konwersji (już Int jako Double)
+                        val conversionFrac = 100.0
                         updateSensorsData(
                             ShipSensorsData(
-                                accelX = event.accelX / 100.0,
-                                accelY = event.accelY / 100.0,
-                                accelZ = event.accelZ / 100.0,
-                                gyroX = event.gyroX / 100.0,
-                                gyroY = event.gyroY / 100.0,
-                                gyroZ = event.gyroZ / 100.0,
-                                magX = event.magX / 100.0,
-                                magY = event.magY / 100.0,
-                                magZ = event.magZ / 100.0,
-                                angleX = event.angleX.toDouble(), // kąty jako Int
-                                angleY = event.angleY.toDouble(),
-                                angleZ = event.angleZ.toDouble(),
-                                depth = event.depth / 100.0
+                                accelX = event.accelX / conversionFrac,
+                                accelY = event.accelY / conversionFrac,
+                                accelZ = event.accelZ / conversionFrac,
+                                gyroX = event.gyroX / conversionFrac,
+                                gyroY = event.gyroY / conversionFrac,
+                                gyroZ = event.gyroZ / conversionFrac,
+                                magX = event.magX / conversionFrac,
+                                magY = event.magY / conversionFrac,
+                                magZ = event.magZ / conversionFrac,
+                                angleX = event.angleX,
+                                angleY = event.angleY,
+                                angleZ = event.angleZ,
+                                depth = event.depth / conversionFrac
                             )
                         )
                     }
                     is SocketEvent.BoatInformation -> {
-                        // Można zaktualizować _homePosition lub wyświetlić info; na razie tylko log
                         Log.d("Socket", "Boat info: ${event.name}/${event.captain}/${event.mission}")
                     }
                     is SocketEvent.BoatInformationChange -> {
@@ -283,12 +273,14 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     is SocketEvent.WarningInformation -> {
                         Log.w("Socket", "Warning: ${event.infoCode}")
-                        // Wyświetl warning w InfoPopup
                         val message = when (event.infoCode) {
                             "COLLISION" -> "Wykryto kolizję! Zatrzymaj łódkę natychmiast!"
                             else -> "Ostrzeżenie: ${event.infoCode}"
                         }
-                        showWarning(message, pl.poznan.put.boatcontroller.templates.InfoPopupType.WARNING)
+                        InfoPopupManager.show(
+                            message = message,
+                            type = InfoPopupType.WARNING
+                        )
                     }
                     is SocketEvent.LostInformation -> {
                         Log.d("Socket", "Lost info ack for sNum=${event.sNum}")
@@ -323,19 +315,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun nextSNum(): Int = seq.incrementAndGet()
-    
-    /**
-     * Konwertuje wartość prędkości z zakresu aplikacji mobilnej (-80..80) na format dla kontrolera (0..100).
-     * Proste mapowanie liniowe:
-     * - -80 -> 0 (max dół)
-     * - 0 -> 50 (środek/neutral)
-     * - 80 -> 100 (max góra)
-     */
+
     private fun convertSpeedToControllerFormat(speed: Int): Int {
-        // Mapowanie liniowe: -80..80 -> 0..100
-        // Wzór: ((speed + 80) / 160) * 100 = ((speed + 80) / 1.6)
-        val mapped = ((speed + 80) / 1.6).toInt().coerceIn(0, 100)
-        return mapped
+        return ((speed + 80) / 1.6).toInt().coerceIn(0, 100)
     }
     
     /**
@@ -359,7 +341,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         
         // BURST: Wysyłaj 3-5 ramek przy zmianie (event-driven)
         currentSpeedSendJob = viewModelScope.launch {
-            repeat(SS_BURST_COUNT) {
+            repeat(ssBurstCount) {
                 val sNum = nextSNum()
                 SocketRepository.send(
                     SocketCommand.SetSpeed(
@@ -369,11 +351,11 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                         sNum = sNum
                     )
                 )
-                Log.d("ControllerViewModel", "📤 SS BURST: left=$leftConverted, right=$rightConverted, winch=$winch, sNum=$sNum (${it + 1}/$SS_BURST_COUNT)")
+                Log.d("ControllerViewModel", "📤 SS BURST: left=$leftConverted, right=$rightConverted, winch=$winch, sNum=$sNum (${it + 1}/$ssBurstCount)")
                 
                 // Czekaj przed następnym wysłaniem (tylko jeśli to nie ostatnia iteracja)
-                if (it < SS_BURST_COUNT - 1) {
-                    delay(SS_BURST_INTERVAL_MS)
+                if (it < ssBurstCount - 1) {
+                    delay(ssBurstIntervalMs)
                 }
             }
         }
@@ -392,7 +374,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         
         keepAliveJob = viewModelScope.launch {
             // Poczekaj chwilę po burst (żeby nie wysyłać od razu)
-            delay(SS_KEEP_ALIVE_INTERVAL_MS)
+            delay(ssKeepAliveIntervalMs)
             
             // Wysyłaj keep-alive w pętli
             while (true) {
@@ -407,20 +389,17 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 Log.d("ControllerViewModel", "💓 SS KEEP-ALIVE: left=$lastSentLeft, right=$lastSentRight, winch=$lastSentWinch, sNum=$sNum")
                 
-                delay(SS_KEEP_ALIVE_INTERVAL_MS)
+                delay(ssKeepAliveIntervalMs)
             }
         }
     }
 
-    fun sendSpeed(left: Double, right: Double) {
+    fun sendSpeed(left: Int, right: Int) {
         viewModelScope.launch {
-            // Konwertuj Double na Int (wartości z sliderów są -80..80)
-            val leftInt = left.toInt()
-            val rightInt = right.toInt()
-            currentSpeed = ((leftInt + rightInt) / 2.0).toFloat()
-            Log.d("ControllerViewModel", "🚢 sendSpeed called: left=$leftInt, right=$rightInt, winch=$winchState")
+            currentSpeed = ((left + right) / 2.0).toFloat()
+            Log.d("ControllerViewModel", "🚢 sendSpeed called: left=$left, right=$right, winch=$winchState")
             // Wyślij z interwałem
-            sendSpeedWithInterval(leftInt, rightInt, winchState)
+            sendSpeedWithInterval(left, right, winchState)
         }
     }
 
@@ -432,13 +411,13 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     
     /**
      * Zmienia stan zwijarki i wysyła komendę SS przez socket tylko jeśli stan się zmienił.
-     * @param newState 0 = góra (up), 1 = wyłączony (stop), 2 = dół (down)
+     * @param newState 2 = góra (up), 1 = wyłączony (stop), 1 = dół (down)
      */
     fun updateWinchState(newState: Int) {
         if (winchState != newState) {
             winchState = newState
             // Wyślij SS z aktualnymi wartościami silników i nowym stanem zwijarki
-            sendSpeed(leftEnginePower.toDouble(), rightEnginePower.toDouble())
+            sendSpeed(leftEnginePower, rightEnginePower)
         }
     }
 
@@ -567,31 +546,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             backendApi?.deletePoi(id)
             loadMission()
         }
-    }
-    
-    /**
-     * Wyświetla warning/error w InfoPopup z auto-hide po 5 sekundach
-     */
-    fun showWarning(message: String, type: pl.poznan.put.boatcontroller.templates.InfoPopupType) {
-        warningHideJob?.cancel()
-        warningMessage = message
-        warningType = type
-        
-        // Auto-hide po 5 sekundach
-        warningHideJob = viewModelScope.launch {
-            delay(5000)
-            warningMessage = null
-            warningType = null
-        }
-    }
-    
-    /**
-     * Ukrywa warning ręcznie
-     */
-    fun hideWarning() {
-        warningHideJob?.cancel()
-        warningMessage = null
-        warningType = null
     }
 }
 

@@ -108,9 +108,10 @@ import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
-import pl.poznan.put.boatcontroller.templates.InfoPopup
-import pl.poznan.put.boatcontroller.templates.InfoPopupType
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopup
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
+import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
 
 class WaypointActivity : ComponentActivity() {
@@ -361,11 +362,17 @@ class WaypointActivity : ComponentActivity() {
         LaunchedEffect(batteryLevel) {
             when {
                 batteryLevel <= 10 && lastBatteryWarning.value != batteryLevel -> {
-                    waypointVm.showWarning("Krytycznie niski poziom baterii: ${batteryLevel}%", InfoPopupType.ERROR)
+                    InfoPopupManager.show(
+                        message = "Krytycznie niski poziom baterii: ${batteryLevel}%",
+                        type = InfoPopupType.ERROR
+                    )
                     lastBatteryWarning.value = batteryLevel
                 }
                 batteryLevel in 11..20 && lastBatteryWarning.value != batteryLevel -> {
-                    waypointVm.showWarning("Niski poziom baterii: ${batteryLevel}%", InfoPopupType.WARNING)
+                    InfoPopupManager.show(
+                        message = "Niski poziom baterii: ${batteryLevel}%",
+                        type = InfoPopupType.WARNING
+                    )
                     lastBatteryWarning.value = batteryLevel
                 }
                 batteryLevel > 20 -> {
@@ -395,7 +402,7 @@ class WaypointActivity : ComponentActivity() {
                             waypointVm.setPhonePositionFallback()
                             Log.d("PHONE_LOCATION", "Fallback to ship on failure")
                         }
-                } catch (e: SecurityException) {
+                } catch (_: SecurityException) {
                     waypointVm.setPhonePositionFallback()
                 }
             }
@@ -502,9 +509,6 @@ class WaypointActivity : ComponentActivity() {
             ) {
                 // InfoPopup dla warningów i błędów
                 InfoPopup(
-                    message = waypointVm.warningMessage ?: "",
-                    type = waypointVm.warningType ?: InfoPopupType.WARNING,
-                    isVisible = waypointVm.warningMessage != null,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
@@ -621,12 +625,10 @@ class WaypointActivity : ComponentActivity() {
 
                 mapView.getMapAsync { mapboxMap ->
                     mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                        // Optymalizacja: Zwiększ cache dla kafelków mapy aby zmniejszyć zużycie danych
                         try {
-                            mapboxMap.setTileCacheEnabled(true)
-                            // Zwiększony cache zmniejszy potrzebę ponownego pobierania kafelków
+                            mapboxMap.tileCacheEnabled = true
                         } catch (e: Exception) {
-                            android.util.Log.d("MapLibre", "Tile cache optimization not available: ${e.message}")
+                            Log.d("MapLibre", "Tile cache optimization not available: ${e.message}")
                         }
                         
                         waypointVm.setMapReady(mapboxMap)

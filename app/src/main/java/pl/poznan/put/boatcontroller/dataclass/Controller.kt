@@ -24,9 +24,9 @@ data class ShipSensorsData(
     val magY: Double = 0.0,
     val magZ: Double = 0.0,
     // Kąty (deg)
-    val angleX: Double = 0.0,
-    val angleY: Double = 0.0,
-    val angleZ: Double = 0.0,
+    val angleX: Int = 0,
+    val angleY: Int = 0,
+    val angleZ: Int = 0,
     // Głębokość (m)
     val depth: Double = 0.0,
 )
