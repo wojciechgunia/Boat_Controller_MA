@@ -394,16 +394,17 @@ class WaypointActivity : ComponentActivity() {
                                 waypointVm.saveCameraPosition(location.latitude, location.longitude, 13.0)
                                 Log.d("PHONE_LOCATION", "Lat: ${location.latitude}, Lon: ${location.longitude}")
                             } else {
-                                waypointVm.setPhonePositionFallback()
-                                Log.d("PHONE_LOCATION", "Fallback to ship")
+                                // Brak aktualnej lokalizacji telefonu – nie pokazujemy operatora
+                                Log.d("PHONE_LOCATION", "No phone location available (null)")
                             }
                         }
-                        .addOnFailureListener {
-                            waypointVm.setPhonePositionFallback()
-                            Log.d("PHONE_LOCATION", "Fallback to ship on failure")
+                        .addOnFailureListener { e ->
+                            // Błąd pobierania lokalizacji – nie pokazujemy operatora
+                            Log.d("PHONE_LOCATION", "Error fetching phone location: ${e.message}")
                         }
                 } catch (_: SecurityException) {
-                    waypointVm.setPhonePositionFallback()
+                    // Brak uprawnień – nie pokazujemy operatora
+                    Log.d("PHONE_LOCATION", "SecurityException – location permission missing")
                 }
             }
         }

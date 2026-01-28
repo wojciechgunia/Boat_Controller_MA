@@ -233,7 +233,8 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                     "VR Cam",
                     R.drawable.bc_vr,
                     navController,
-                    enabled = if(isLandscape) mainVm.isLoggedIn else canAccessController,
+//                    enabled = if(isLandscape) mainVm.isLoggedIn else canAccessController,
+                    enabled = false,
                     navDest = "vr_mode",
                     mainVm = mainVm
                 )
@@ -287,12 +288,19 @@ fun MenuButton(
             contentColor = Color.White
         ),
     ) {
-        Text(text = text, fontSize = 10.em, modifier = Modifier.padding(end = 10.dp))
-        Icon(
-            painter = painterResource(id = icon),
-            contentDescription = "Timer Icon",
-            modifier = Modifier.size(55.dp)
-        )
+        Column{
+            Row{
+                Text(text = text, fontSize = 10.em, modifier = Modifier.padding(end = 10.dp))
+                Icon(
+                    painter = painterResource(id = icon),
+                    contentDescription = "Timer Icon",
+                    modifier = Modifier.size(55.dp)
+                )
+            }
+            if (text == "VR Cam") {
+                Text(text = "Coming soon!", fontSize = 4.em, modifier = Modifier.padding(end = 6.dp))
+            }
+        }
     }
     Spacer(modifier = Modifier.height(10.dp))
 }

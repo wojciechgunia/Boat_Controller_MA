@@ -467,10 +467,13 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getPhoneLocationFeature(): FeatureCollection {
-        val phoneCoordinates = Point.fromLngLat(
-            _phonePosition.value?.get(0) ?: _shipPosition.value.lon,
-            _phonePosition.value?.get(1) ?: _shipPosition.value.lat,
-        )
+        // Jeśli nie mamy pozycji telefonu – nie pokazujemy go w ogóle
+        val phonePos = _phonePosition.value ?: return FeatureCollection.fromFeatures(emptyList())
+
+        val lat = phonePos[0]
+        val lon = phonePos[1]
+
+        val phoneCoordinates = Point.fromLngLat(lon, lat)
 
         val phoneFeature = Feature.fromGeometry(phoneCoordinates).apply {
             addStringProperty("title", "Phone")

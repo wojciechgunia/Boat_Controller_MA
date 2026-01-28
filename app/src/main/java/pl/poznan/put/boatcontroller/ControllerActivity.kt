@@ -643,16 +643,17 @@ class ControllerActivity: ComponentActivity() {
                                 viewModel.saveCameraPosition(location.latitude, location.longitude, 13.0)
                                 Log.d("PHONE_LOCATION", "Lat: ${location.latitude}, Lon: ${location.longitude}")
                             } else {
-                                viewModel.setPhonePositionFallback()
-                                Log.d("PHONE_LOCATION", "Fallback to ship")
+                                // Brak aktualnej lokalizacji telefonu – nie pokazujemy operatora
+                                Log.d("PHONE_LOCATION", "No phone location available (null)")
                             }
                         }
-                        .addOnFailureListener {
-                            viewModel.setPhonePositionFallback()
-                            Log.d("PHONE_LOCATION", "Fallback to ship on failure")
+                        .addOnFailureListener { e ->
+                            // Błąd pobierania lokalizacji – nie pokazujemy operatora
+                            Log.d("PHONE_LOCATION", "Error fetching phone location: ${e.message}")
                         }
                 } catch (_: SecurityException) {
-                    viewModel.setPhonePositionFallback()
+                    // Brak uprawnień – nie pokazujemy operatora
+                    Log.d("PHONE_LOCATION", "SecurityException – location permission missing")
                 }
             }
         }
@@ -916,28 +917,28 @@ class ControllerActivity: ComponentActivity() {
                     }
                 }
                 
-                // Tymczasowy przycisk do testowania baterii (tylko do testów)
-                FloatingActionButton(
-                    onClick = { 
-                        viewModel.simulateBatteryDecrease()
-                        if ((viewModel.externalBatteryLevel.value ?: 100) <= 0) {
-                            viewModel.resetBattery()
-                        }
-                    },
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, bottom = 16.dp)
-                        .shadow(16.dp, CircleShape, clip = false)
-                        .clip(CircleShape),
-                    containerColor = Color.Gray
-                ) {
-                    Text(
-                        text = "🔋",
-                        fontSize = 20.sp,
-                        modifier = Modifier.padding(4.dp)
-                    )
-                }
+//                // Tymczasowy przycisk do testowania baterii (tylko do testów)
+//                FloatingActionButton(
+//                    onClick = {
+//                        viewModel.simulateBatteryDecrease()
+//                        if ((viewModel.externalBatteryLevel.value ?: 100) <= 0) {
+//                            viewModel.resetBattery()
+//                        }
+//                    },
+//                    shape = CircleShape,
+//                    modifier = Modifier
+//                        .align(Alignment.BottomStart)
+//                        .padding(start = 16.dp, bottom = 16.dp)
+//                        .shadow(16.dp, CircleShape, clip = false)
+//                        .clip(CircleShape),
+//                    containerColor = Color.Gray
+//                ) {
+//                    Text(
+//                        text = "🔋",
+//                        fontSize = 20.sp,
+//                        modifier = Modifier.padding(4.dp)
+//                    )
+//                }
             }
         }
     }
