@@ -3,7 +3,7 @@ package pl.poznan.put.boatcontroller.templates
 import android.annotation.SuppressLint
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,14 +23,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import pl.poznan.put.boatcontroller.R
 import pl.poznan.put.boatcontroller.dataclass.POIObject
 import kotlin.text.Typography.nbsp
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.alpha
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @SuppressLint("AutoboxingStateCreation")
 @Composable
@@ -43,12 +53,14 @@ fun FullScreenPopup(
     onDelete: (Int) -> Unit
 ) {
     var currentIndex by remember { mutableIntStateOf(poiId) }
-    var currentPoi  by remember { mutableStateOf<POIObject>(POIObject(
-        id = 0,
-        missionId = 0,
-        lon = 0.0,
-        lat = 0.0
-    )) }
+    var currentPoi by remember { mutableStateOf<POIObject>(
+        POIObject(
+            id = 0,
+            missionId = 0,
+            lon = 0.0,
+            lat = 0.0
+        )
+    ) }
     val poi = poiList.getOrNull(currentIndex)
     if (poi != null) {
         currentPoi = poi
@@ -56,78 +68,130 @@ fun FullScreenPopup(
 
     if (!isOpen) return
 
+    val darkTheme = isSystemInDarkTheme()
+    val backgroundColor = if (darkTheme) Color.Black else Color.White
+    val textColor = if (darkTheme) Color.White else Color.Black
+    val surfaceColor = if (darkTheme) Color(0xFF1E1E1E) else Color.White
+
     var expandedImage by remember { mutableStateOf(false) }
     var isEditingName by remember { mutableStateOf(false) }
     var isEditingDescription by remember { mutableStateOf(false) }
     var nameValue by remember { mutableStateOf(TextFieldValue(currentPoi.name.orEmpty())) }
     var descriptionValue by remember { mutableStateOf(TextFieldValue(currentPoi.description.orEmpty())) }
+    
+    // Parsuj pictures do listy URL
+    val picturesList = remember(currentPoi.pictures) {
+        if (currentPoi.pictures.isNullOrBlank()) {
+            emptyList()
+        } else {
+            try {
+                val gson = Gson()
+                val listType = object : TypeToken<List<String>>() {}.type
+                gson.fromJson<List<String>>(currentPoi.pictures, listType) ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+    
+    // Indeks aktualnego zdjęcia w ramach POI
+    var currentImageIndex by remember { mutableIntStateOf(0) }
+    
+    // Resetuj indeks zdjęcia gdy zmienia się POI
+    LaunchedEffect(currentPoi.id) {
+        currentImageIndex = 0
+    }
+    
+    val currentImageUrl = picturesList.getOrNull(currentImageIndex)
 
-    LaunchedEffect(poiId) {
+    LaunchedEffect(poiId, poiList) {
         currentIndex = poiId
         val poi = poiList.getOrNull(currentIndex)
-        currentPoi = poi
-            ?: POIObject(
-                id = 0,
-                missionId = 0,
-                lon = 0.0,
-                lat = 0.0)
-        nameValue = TextFieldValue(currentPoi.name.orEmpty())
-        descriptionValue = TextFieldValue(currentPoi.description.orEmpty())
+        if (poi != null) {
+            currentPoi = poi
+            nameValue = TextFieldValue(currentPoi.name.orEmpty())
+            descriptionValue = TextFieldValue(currentPoi.description.orEmpty())
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.8f))
+            .background(backgroundColor.copy(alpha = 0.95f))
     ) {
-        if (expandedImage) {
+        if (expandedImage && currentImageUrl != null) {
             ExpandedImageView(
-                imageUrl = currentPoi.pictures?.replace("[", "")?.replace("]", "")?.split(",")
-                    ?.get(0).toString(),
-                onClose = { expandedImage = false }
+                imageUrl = currentImageUrl,
+                onClose = { expandedImage = false },
+                darkTheme = darkTheme
             )
         } else {
             Row(Modifier.fillMaxSize()) {
-                ImageSection(
-                    imageUrl = currentPoi.pictures.toString().replace("[", "").replace("]", "")
-                        .split(",")[0],
-                    onExpand = { expandedImage = true },
-                    modifier = Modifier.weight(2f)
-                )
+                // Sekcja ze zdjęciem - zajmuje całą dostępną przestrzeń minus szerokość ControlPanel
+                // Zdjęcie używa całego ekranu (bez systemBarsPadding)
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(1f) // Zajmuje resztę przestrzeni
+                ) {
+                    if (currentImageUrl != null) {
+                        SwipeableImageSection(
+                            images = picturesList,
+                            currentIndex = currentImageIndex,
+                            onIndexChange = { newIndex ->
+                                // Cykliczne przechodzenie między zdjęciami
+                                currentImageIndex = when {
+                                    newIndex < 0 -> picturesList.lastIndex
+                                    newIndex >= picturesList.size -> 0
+                                    else -> newIndex
+                                }
+                            },
+                            onExpand = { expandedImage = true },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        // Brak obrazów - pokaż placeholder
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(if (darkTheme) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Brak obrazów",
+                                color = textColor,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+                
+                // Panel kontrolny - stała szerokość 280dp jak wcześniej
                 ControlPanel(
                     currentPoi = currentPoi,
+                    currentImageIndex = currentImageIndex,
+                    totalImages = picturesList.size,
                     onEditName = {
-                        isEditingName = true; nameValue =
-                        TextFieldValue(currentPoi.name.orEmpty())
+                        isEditingName = true
+                        nameValue = TextFieldValue(currentPoi.name.orEmpty())
                     },
                     onEditDescription = {
-                        isEditingDescription = true; descriptionValue =
-                        TextFieldValue(currentPoi.description.orEmpty())
+                        isEditingDescription = true
+                        descriptionValue = TextFieldValue(currentPoi.description.orEmpty())
                     },
                     onDelete = onDelete,
                     onPrev = {
-                        if (currentIndex > 0) currentIndex-- else currentIndex =
-                            poiList.lastIndex
+                        if (currentIndex > 0) currentIndex-- else currentIndex = poiList.lastIndex
                     },
                     onNext = {
-                        if (currentIndex < poiList.lastIndex) currentIndex++ else currentIndex =
-                            0
+                        if (currentIndex < poiList.lastIndex) currentIndex++ else currentIndex = 0
                     },
-                    modifier = Modifier.weight(1f)
+                    darkTheme = darkTheme,
+                    textColor = textColor,
+                    surfaceColor = surfaceColor,
+                    modifier = Modifier.width(280.dp), // Stała szerokość jak wcześniej
+                    onClose = onClose
                 )
-
-            }
-            Box(
-                modifier =
-                    Modifier.fillMaxSize()
-                        .systemBarsPadding()
-            ) {
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Black)
-                }
             }
         }
 
@@ -148,14 +212,21 @@ fun FullScreenPopup(
                     onSaveDescription(currentPoi.id, descriptionValue.text)
                     isEditingDescription = false
                     currentPoi = currentPoi.copy(description = descriptionValue.text)
-                }
+                },
+                darkTheme = darkTheme,
+                textColor = textColor,
+                surfaceColor = surfaceColor
             )
         }
     }
 }
 
 @Composable
-private fun ExpandedImageView(imageUrl: String, onClose: () -> Unit) {
+private fun ExpandedImageView(
+    imageUrl: String,
+    onClose: () -> Unit,
+    darkTheme: Boolean
+) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
@@ -163,7 +234,7 @@ private fun ExpandedImageView(imageUrl: String, onClose: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(if (darkTheme) Color.Black else Color.Black)
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(1f, 5f)
@@ -175,7 +246,7 @@ private fun ExpandedImageView(imageUrl: String, onClose: () -> Unit) {
         AsyncImage(
             model = imageUrl,
             contentDescription = null,
-            contentScale = ContentScale.Fit,
+            contentScale = ContentScale.Fit, // Zachowaj aspect ratio, wypełnij maksymalnie dostępną przestrzeń
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
@@ -187,9 +258,9 @@ private fun ExpandedImageView(imageUrl: String, onClose: () -> Unit) {
         )
 
         Box(
-            modifier =
-                Modifier.fillMaxSize()
-                    .systemBarsPadding()
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
         ) {
             IconButton(
                 onClick = onClose,
@@ -201,64 +272,294 @@ private fun ExpandedImageView(imageUrl: String, onClose: () -> Unit) {
     }
 }
 
-
 @Composable
-private fun ImageSection(
-    imageUrl: String,
+private fun SwipeableImageSection(
+    images: List<String>,
+    currentIndex: Int,
+    onIndexChange: (Int) -> Unit,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    var containerWidth by remember { mutableFloatStateOf(0f) }
+    var isAnimating by remember { mutableStateOf(false) }
+    var targetIndex by remember { mutableIntStateOf(currentIndex) }
+    val coroutineScope = rememberCoroutineScope()
+    val imageUrl = images.getOrNull(currentIndex) ?: return
+    
+    // Animatable do kontroli animacji - pozwala na snapTo i animateTo
+    val animatedOffset = remember { Animatable(0f) }
+    
+    // Użyj animowanej wartości podczas animacji, w przeciwnym razie użyj dragOffsetX
+    val displayOffsetX = if (isAnimating) animatedOffset.value else dragOffsetX
+    
+    // Resetuj offset gdy zmienia się indeks zdjęcia (np. przez strzałki)
+    LaunchedEffect(currentIndex) {
+        if (!isAnimating && targetIndex == currentIndex) {
+            dragOffsetX = 0f
+            animatedOffset.snapTo(0f)
+        }
+    }
+    
     Box(
         modifier = modifier
-            .fillMaxHeight()
-            .clickable { onExpand() }
+            .onSizeChanged { size ->
+                containerWidth = size.width.toFloat()
+            }
+            .pointerInput(currentIndex, containerWidth) {
+                if (containerWidth <= 0f) return@pointerInput
+                
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        // Zatrzymaj animację jeśli trwa i zsynchronizuj pozycję
+                        if (isAnimating) {
+                            dragOffsetX = animatedOffset.value
+                            coroutineScope.launch {
+                                animatedOffset.stop()
+                            }
+                            isAnimating = false
+                            targetIndex = currentIndex
+                        }
+                    },
+                    onDrag = { change, dragAmount ->
+                        // Zawsze pozwól na przesuwanie (cykliczne przechodzenie)
+                        dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-containerWidth, containerWidth)
+                    },
+                    onDragEnd = {
+                        // Po zakończeniu przeciągania sprawdź czy przesunięcie było wystarczające
+                        val threshold = containerWidth * 0.25f // 25% szerokości ekranu
+                        
+                        when {
+                            dragOffsetX > threshold -> {
+                                // Przesuń w prawo - poprzednie zdjęcie (lub ostatnie jeśli jesteśmy na pierwszym)
+                                targetIndex = if (currentIndex > 0) currentIndex - 1 else images.lastIndex
+                                // Rozpocznij animację od aktualnej pozycji dragOffsetX do końca w prawo
+                                isAnimating = true
+                                coroutineScope.launch {
+                                    animatedOffset.snapTo(dragOffsetX) // Ustaw początkową wartość
+                                    animatedOffset.animateTo(
+                                        targetValue = containerWidth,
+                                        animationSpec = tween(
+                                            durationMillis = 300,
+                                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                        )
+                                    )
+                                    // Po zakończeniu animacji zmień indeks
+                                    onIndexChange(targetIndex)
+                                    // Zresetuj wartości
+                                    dragOffsetX = 0f
+                                    animatedOffset.snapTo(0f)
+                                    isAnimating = false
+                                }
+                            }
+                            dragOffsetX < -threshold -> {
+                                // Przesuń w lewo - następne zdjęcie (lub pierwsze jeśli jesteśmy na ostatnim)
+                                targetIndex = if (currentIndex < images.size - 1) currentIndex + 1 else 0
+                                // Rozpocznij animację od aktualnej pozycji dragOffsetX do końca w lewo
+                                isAnimating = true
+                                coroutineScope.launch {
+                                    animatedOffset.snapTo(dragOffsetX) // Ustaw początkową wartość
+                                    animatedOffset.animateTo(
+                                        targetValue = -containerWidth,
+                                        animationSpec = tween(
+                                            durationMillis = 300,
+                                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                        )
+                                    )
+                                    // Po zakończeniu animacji zmień indeks
+                                    onIndexChange(targetIndex)
+                                    // Zresetuj wartości
+                                    dragOffsetX = 0f
+                                    animatedOffset.snapTo(0f)
+                                    isAnimating = false
+                                }
+                            }
+                            else -> {
+                                // Za słabo przesunięte - animuj z powrotem do środka
+                                targetIndex = currentIndex
+                                isAnimating = true
+                                coroutineScope.launch {
+                                    animatedOffset.snapTo(dragOffsetX) // Ustaw początkową wartość
+                                    animatedOffset.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(
+                                            durationMillis = 300,
+                                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                        )
+                                    )
+                                    // Po zakończeniu animacji zresetuj wartości
+                                    dragOffsetX = 0f
+                                    animatedOffset.snapTo(0f)
+                                    isAnimating = false
+                                }
+                            }
+                        }
+                    }
+                )
+            }
     ) {
+        // Wyświetl aktualne zdjęcie z przesunięciem
         AsyncImage(
             model = imageUrl,
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    translationX = displayOffsetX
+                )
         )
+        
+        // Jeśli przesuwamy, pokaż podgląd następnego/poprzedniego zdjęcia
+        if (displayOffsetX != 0f && containerWidth > 0f) {
+            val nextIndex = when {
+                displayOffsetX > 0 -> {
+                    // Przesuwamy w prawo - pokaż poprzednie (lub ostatnie jeśli jesteśmy na pierwszym)
+                    if (currentIndex > 0) currentIndex - 1 else images.lastIndex
+                }
+                displayOffsetX < 0 -> {
+                    // Przesuwamy w lewo - pokaż następne (lub pierwsze jeśli jesteśmy na ostatnim)
+                    if (currentIndex < images.size - 1) currentIndex + 1 else 0
+                }
+                else -> null
+            }
+            
+            val nextImageUrl = nextIndex?.let { images.getOrNull(it) }
+            if (nextImageUrl != null) {
+                val nextOffset = if (displayOffsetX > 0) {
+                    // Pokazuj poprzednie zdjęcie po lewej stronie
+                    displayOffsetX - containerWidth
+                } else {
+                    // Pokazuj następne zdjęcie po prawej stronie
+                    displayOffsetX + containerWidth
+                }
+                
+                AsyncImage(
+                    model = nextImageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            translationX = nextOffset
+                        )
+                )
+            }
+        }
+        
+        // Przycisk FAB do pełnoekranowego podglądu (bez tła, tylko ikona) - górny prawy róg
+        FloatingActionButton(
+            onClick = onExpand,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+                .alpha(0.7f),
+            containerColor = Color.Transparent,
+            elevation = FloatingActionButtonDefaults.elevation(0.dp)
+        ) {
+            Icon(
+                Icons.Default.Fullscreen,
+                contentDescription = "Fullscreen",
+                tint = Color.White,
+                modifier = Modifier.size(32.dp) // Większa ikona
+            )
+        }
     }
 }
 
 @Composable
 private fun ControlPanel(
     currentPoi: POIObject,
+    currentImageIndex: Int,
+    totalImages: Int,
     onEditName: () -> Unit,
     onEditDescription: () -> Unit,
     onDelete: (Int) -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    modifier: Modifier = Modifier
+    darkTheme: Boolean,
+    textColor: Color,
+    surfaceColor: Color,
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit = {}
 ) {
     var showDialog by remember { mutableStateOf(false) }
-    Column(
-        modifier = modifier
-            .fillMaxHeight()
-            .background(Color.White)
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(16.dp, top=32.dp),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Name: ${currentPoi.name}", modifier = Modifier.weight(1f))
+    Box(modifier = modifier.fillMaxHeight()) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .background(surfaceColor)
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(16.dp, top = 32.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                // Przycisk zamknięcia w górnym rogu
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(onClick = onClose) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = textColor
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Name: ${currentPoi.name ?: "null"}",
+                    color = textColor,
+                    modifier = Modifier.weight(1f)
+                )
                 IconButton(onClick = onEditName) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = textColor,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Description: ${currentPoi.description}", modifier = Modifier.weight(1f))
+                Text(
+                    text = "Description: ${currentPoi.description ?: "null"}",
+                    color = textColor,
+                    modifier = Modifier.weight(1f)
+                )
                 IconButton(onClick = onEditDescription) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = textColor,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
+            }
+            
+            // Wskaźnik zdjęć (np. "Zdjęcie 1/3")
+            if (totalImages > 0) {
+                Text(
+                    text = "Zdjęcie ${currentImageIndex + 1}/$totalImages",
+                    color = textColor.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
         Column {
             Row(Modifier.padding(top = 8.dp)) {
-                Text(text = "Lon:${nbsp+"%.5f".format(currentPoi.lon)} | ", fontSize = 12.sp)
-                Text(text = "Lat:${nbsp+"%.5f".format(currentPoi.lat)}", fontSize = 12.sp)
+                Text(
+                    text = "Lon:${nbsp}${"%.5f".format(currentPoi.lon)} | ",
+                    fontSize = 12.sp,
+                    color = textColor.copy(alpha = 0.7f)
+                )
+                Text(
+                    text = "Lat:${nbsp}${"%.5f".format(currentPoi.lat)}",
+                    fontSize = 12.sp,
+                    color = textColor.copy(alpha = 0.7f)
+                )
             }
             Row(
                 modifier = Modifier
@@ -273,7 +574,8 @@ private fun ControlPanel(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier
-                        .width(150.dp).height(38.dp)
+                        .width(150.dp)
+                        .height(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
@@ -287,41 +589,51 @@ private fun ControlPanel(
             }
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth().padding(end=12.dp)
+                modifier = Modifier.fillMaxWidth().padding(end = 12.dp)
             ) {
-                OutlinedButton(onClick = onPrev, shape = RoundedCornerShape(6.dp)) {
+                OutlinedButton(
+                    onClick = onPrev,
+                    shape = RoundedCornerShape(6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textColor)
+                ) {
                     Icon(
                         Icons.Default.ChevronLeft,
                         contentDescription = "Prev",
-                        tint = Color.Black
+                        tint = textColor
                     )
                 }
-                OutlinedButton(onClick = onNext, shape = RoundedCornerShape(6.dp)) {
+                OutlinedButton(
+                    onClick = onNext,
+                    shape = RoundedCornerShape(6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textColor)
+                ) {
                     Icon(
                         Icons.Default.ChevronRight,
                         contentDescription = "Next",
-                        tint = Color.Black
+                        tint = textColor
                     )
                 }
             }
+        }
         }
     }
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("Are you sure?") },
-            text = { Text("Do you really want to delete this point?") },
+            title = { Text("Are you sure?", color = textColor) },
+            text = { Text("Do you really want to delete this point?", color = textColor) },
+            containerColor = surfaceColor,
             confirmButton = {
                 TextButton(onClick = {
                     showDialog = false
                     onDelete(currentPoi.id)
                 }) {
-                    Text("Yes")
+                    Text("Yes", color = Color.Red)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) {
-                    Text("No")
+                    Text("No", color = textColor)
                 }
             }
         )
@@ -337,10 +649,13 @@ private fun EditBar(
     onNameChange: (TextFieldValue) -> Unit,
     onDescriptionChange: (TextFieldValue) -> Unit,
     onSaveName: () -> Unit,
-    onSaveDescription: () -> Unit
+    onSaveDescription: () -> Unit,
+    darkTheme: Boolean,
+    textColor: Color,
+    surfaceColor: Color
 ) {
     Surface(
-        color = Color.White,
+        color = surfaceColor,
         shadowElevation = 8.dp,
         modifier = Modifier
             .fillMaxWidth()
@@ -356,20 +671,36 @@ private fun EditBar(
                 TextField(
                     value = nameValue,
                     onValueChange = onNameChange,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor
+                    )
                 )
                 IconButton(onClick = onSaveName) {
-                    Icon(painterResource(id = R.drawable.save), contentDescription = "Save")
+                    Icon(
+                        painterResource(id = R.drawable.save),
+                        contentDescription = "Save",
+                        tint = textColor
+                    )
                 }
             }
             if (isEditingDescription) {
                 TextField(
                     value = descriptionValue,
                     onValueChange = onDescriptionChange,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor
+                    )
                 )
                 IconButton(onClick = onSaveDescription) {
-                    Icon(painterResource(id = R.drawable.save), contentDescription = "Save")
+                    Icon(
+                        painterResource(id = R.drawable.save),
+                        contentDescription = "Save",
+                        tint = textColor
+                    )
                 }
             }
         }

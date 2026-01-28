@@ -128,6 +128,7 @@ import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
 import pl.poznan.put.boatcontroller.templates.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.HttpStreamView
+import pl.poznan.put.boatcontroller.templates.SavePOIButton
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopup
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
@@ -964,26 +965,15 @@ class ControllerActivity: ComponentActivity() {
                     .padding(8.dp)
             )
 
-            // Przycisk zapisu klatki z sonaru
-            FloatingActionButton(
-                onClick = {
-                    // TODO: tutaj podłącz logikę zapisu obrazu z sonaru
-                },
-                shape = CircleShape,
+            // Przycisk zapisu POI z sonaru
+            SavePOIButton(
+                viewModel = viewModel,
+                sourceType = "sonar",
+                connectionState = viewModel.httpConnectionState,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(16.dp)
-                    .shadow(16.dp, CircleShape, clip = false)
-                    .clip(CircleShape),
-                containerColor = colorResource(id = R.color.blue)
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.save),
-                    contentDescription = "Save sonar frame",
-                    tint = Color.White,
-                modifier = Modifier.size(20.dp)
-                )
-            }
+            )
         }
     }
 
@@ -1126,26 +1116,15 @@ class ControllerActivity: ComponentActivity() {
                         .padding(8.dp)
                 )
 
-                // Przycisk zapisu klatki z kamery
-                FloatingActionButton(
-                    onClick = {
-                        // TODO: tutaj podłącz logikę zapisu zdjęcia z kamery
-                    },
-                    shape = CircleShape,
+                // Przycisk zapisu POI z kamery
+                SavePOIButton(
+                    viewModel = viewModel,
+                    sourceType = "camera",
+                    connectionState = viewModel.httpConnectionState,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(16.dp)
-                        .shadow(16.dp, CircleShape, clip = false)
-                        .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.blue)
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.save),
-                        contentDescription = "Save frame",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                )
             }
             
             // Panel sterowania zwijarki - 15% szerokości, pionowy

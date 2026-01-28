@@ -243,10 +243,39 @@ fun HttpStreamView(
                             
                             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                                 super.onPageStarted(view, url, favicon)
+                                
+                                // Gdy strona zaczyna się ładować, sprawdź czy to stream URL
+                                val startedUrl = url ?: ""
+                                val isStreamUrl = startedUrl.contains(streamUrl, ignoreCase = true)
+                                
+                                if (isStreamUrl) {
+                                    // Stream zaczyna się ładować - ustaw stan na Reconnecting (jeśli nie jest już Connected)
+                                    // To pozwala na szybkie wykrycie rozpoczęcia ładowania
+                                    val currentState = HttpStreamRepository.connectionState.replayCache.lastOrNull()
+                                    if (currentState == ConnectionState.Disconnected) {
+                                        HttpStreamRepository.setReconnecting()
+                                    }
+                                }
                             }
                             
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
+                                
+                                // Jeśli strona się załadowała pomyślnie i to jest stream URL, ustaw stan na Connected
+                                val finishedUrl = url ?: ""
+                                val isStreamUrl = finishedUrl.contains(streamUrl, ignoreCase = true)
+                                
+                                if (isStreamUrl && view != null) {
+                                    // Strona streamu załadowała się pomyślnie - ustaw stan na Connected
+                                    // Używamy małego opóźnienia aby upewnić się że WebView faktycznie załadował content
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        val currentState = HttpStreamRepository.connectionState.replayCache.lastOrNull()
+                                        if (currentState != ConnectionState.Connected) {
+                                            // Tylko jeśli nie byliśmy już połączeni, zmień stan
+                                            HttpStreamRepository.setConnected()
+                                        }
+                                    }, 500) // 500ms opóźnienie aby upewnić się że stream się załadował
+                                }
                             }
                             
                             override fun onReceivedError(

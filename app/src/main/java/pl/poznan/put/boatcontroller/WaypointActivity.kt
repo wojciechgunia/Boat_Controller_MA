@@ -147,6 +147,12 @@ class WaypointActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Odśwież listę POI gdy Activity wraca na ekran (np. po zapisaniu POI z ControllerActivity)
+        waypointVm.loadMission()
+    }
+
     @Composable
     fun isLandscape(): Boolean {
         val configuration = LocalConfiguration.current

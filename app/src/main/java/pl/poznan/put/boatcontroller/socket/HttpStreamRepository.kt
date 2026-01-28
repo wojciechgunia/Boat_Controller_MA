@@ -1,5 +1,7 @@
 package pl.poznan.put.boatcontroller.socket
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.util.Log
 import android.webkit.WebView
 import java.lang.ref.WeakReference
@@ -239,6 +241,14 @@ object HttpStreamRepository {
     }
     
     /**
+     * Zmienia stan na Connected - używane gdy WebView pomyślnie załadował stream.
+     */
+    fun setConnected() {
+        connectionState.tryEmit(ConnectionState.Connected)
+        errorMessage.tryEmit(null)
+    }
+    
+    /**
      * Wymusza ponowne połączenie - resetuje stan i wymusza reconnect.
      */
     fun forceReconnect(tab: ControllerTab) {
@@ -298,5 +308,34 @@ object HttpStreamRepository {
      */
     private fun resetObservation() {
         isObservingConnection = false
+    }
+    
+    /**
+     * Przechwytuje bitmapę z aktywnego WebView.
+     * @return Bitmapa z WebView lub null jeśli WebView nie istnieje lub nie jest widoczne
+     */
+    fun captureWebViewBitmap(): Bitmap? {
+        val webView = activeWebView ?: return null
+        
+        return try {
+            // Sprawdź czy WebView ma rozmiar
+            if (webView.width <= 0 || webView.height <= 0) {
+                Log.w("HttpStreamRepository", "WebView has invalid size: ${webView.width}x${webView.height}")
+                return null
+            }
+            
+            // Utwórz bitmapę o rozmiarze WebView
+            val bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            
+            // Narysuj zawartość WebView na canvas
+            webView.draw(canvas)
+            
+            Log.d("HttpStreamRepository", "✅ Captured bitmap: ${bitmap.width}x${bitmap.height}")
+            bitmap
+        } catch (e: Exception) {
+            Log.e("HttpStreamRepository", "❌ Error capturing bitmap from WebView", e)
+            null
+        }
     }
 }

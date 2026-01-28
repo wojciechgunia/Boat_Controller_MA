@@ -36,7 +36,8 @@ data class HttpStreamConfig(
  */
 object HttpStreamConfigs {
     // Podstawowy adres IP dla wszystkich streamów
-    private const val BASE_IP = "100.103.230.44"
+    // private const val BASE_IP = "100.103.230.44" // Oryginalne IP
+    private const val BASE_IP = "192.168.1.12" // Testy bez drona
     
     // Konfiguracje streamów
     val CAMERA = HttpStreamConfig(

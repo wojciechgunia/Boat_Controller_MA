@@ -2,6 +2,7 @@ package pl.poznan.put.boatcontroller
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.util.Base64
 import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import pl.poznan.put.boatcontroller.api.ApiService
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
 import pl.poznan.put.boatcontroller.dataclass.POIObject
+import pl.poznan.put.boatcontroller.dataclass.POICreateRequest
 import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
@@ -42,6 +44,10 @@ import pl.poznan.put.boatcontroller.socket.SocketCommand
 import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.io.ByteArrayOutputStream
+import kotlin.math.abs
 
 class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
@@ -548,6 +554,212 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             backendApi?.deletePoi(id)
             loadMission()
+        }
+    }
+    
+    /**
+     * Konwertuje bitmapę na base64 string.
+     */
+    private fun bitmapToBase64(bitmap: Bitmap): String {
+        val outputStream = ByteArrayOutputStream()
+        // Kompresuj do JPEG z jakością 85% aby zmniejszyć rozmiar
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+        val byteArray = outputStream.toByteArray()
+        return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+    }
+    
+    /**
+     * Sprawdza czy istnieje POI w pobliżu danej pozycji.
+     * @param lat Szerokość geograficzna
+     * @param lon Długość geograficzna
+     * @param radiusMeters Promień w metrach (domyślnie 10m)
+     * @return POI w pobliżu lub null jeśli nie znaleziono
+     */
+    private fun findNearbyPoi(lat: Double, lon: Double, radiusMeters: Double = 10.0): POIObject? {
+        // Przybliżone obliczenie odległości w metrach (Haversine formula uproszczona dla małych odległości)
+        // 1 stopień ≈ 111 km
+        val latDiff = radiusMeters / 111000.0
+        val lonDiff = radiusMeters / (111000.0 * kotlin.math.cos(Math.toRadians(lat)))
+        
+        return _poiPositions.firstOrNull { poi ->
+            val latDistance = abs(poi.lat - lat)
+            val lonDistance = abs(poi.lon - lon)
+            latDistance <= latDiff && lonDistance <= lonDiff
+        }
+    }
+    
+    /**
+     * Tworzy lub aktualizuje POI z obrazem.
+     * Jeśli POI istnieje w pobliżu (promień ~10m), dodaje obraz do istniejącego POI.
+     * W przeciwnym razie tworzy nowy POI.
+     * 
+     * @param bitmap Bitmapa do zapisania (z kamery lub sonaru)
+     * @param sourceType Typ źródła ("camera" lub "sonar")
+     * @param name Opcjonalna nazwa POI
+     * @param description Opcjonalny opis POI
+     */
+    fun createPoiWithImage(
+        bitmap: Bitmap?,
+        sourceType: String,
+        name: String? = null,
+        description: String? = null
+    ) {
+        if (bitmap == null) {
+            Log.e("ControllerViewModel", "❌ Bitmap is null, cannot create POI")
+            InfoPopupManager.show(
+                message = "Nie można przechwycić obrazu. Spróbuj ponownie.",
+                type = InfoPopupType.ERROR
+            )
+            return
+        }
+        
+        if (missionId == -1) {
+            Log.e("ControllerViewModel", "❌ Mission ID is -1, cannot create POI")
+            InfoPopupManager.show(
+                message = "Brak wybranej misji. Wybierz misję przed zapisem POI.",
+                type = InfoPopupType.ERROR
+            )
+            return
+        }
+        
+        viewModelScope.launch {
+            try {
+                // Pobierz aktualną pozycję łódki
+                val shipPos = _shipPosition.value
+                val lat = shipPos.lat
+                val lon = shipPos.lon
+                
+                // Sprawdź czy istnieje POI w pobliżu
+                val nearbyPoi = findNearbyPoi(lat, lon)
+                
+                // Konwertuj bitmapę na base64
+                val imageBase64 = bitmapToBase64(bitmap)
+                // Tworzymy URL w formacie data URI (tymczasowe rozwiązanie)
+                val imageUrl = "data:image/jpeg;base64,$imageBase64"
+                
+                if (nearbyPoi != null) {
+                    // POI istnieje w pobliżu - dodajemy obraz do istniejącego POI
+                    Log.d("ControllerViewModel", "📍 Found nearby POI (id=${nearbyPoi.id}), adding image")
+                    
+                    // Pobierz aktualną listę obrazów
+                    val existingPictures = nearbyPoi.pictures?.let { pics ->
+                        try {
+                            // Parsuj JSON string do listy
+                            val gson = Gson()
+                            val listType = object : TypeToken<List<String>>() {}.type
+                            gson.fromJson<List<String>>(pics, listType) ?: emptyList()
+                        } catch (e: Exception) {
+                            Log.w("ControllerViewModel", "Failed to parse existing pictures", e)
+                            emptyList()
+                        }
+                    } ?: emptyList()
+                    
+                    // Dodaj nowy obraz do listy
+                    val updatedPictures = existingPictures + imageUrl
+                    
+                    // Konwertuj z powrotem na JSON string
+                    val gson = Gson()
+                    val picturesJson = gson.toJson(updatedPictures)
+                    
+                    // Aktualizuj POI z nową listą obrazów
+                    updatePoiWithPictures(nearbyPoi.id, picturesJson)
+                } else {
+                    // Nie znaleziono POI w pobliżu - tworzymy nowy
+                    Log.d("ControllerViewModel", "📍 No nearby POI found, creating new POI")
+                    createNewPoi(lat, lon, name, description, listOf(imageUrl))
+                }
+            } catch (e: Exception) {
+                Log.e("ControllerViewModel", "❌ Error creating POI with image", e)
+                InfoPopupManager.show(
+                    message = "Błąd podczas zapisywania POI: ${e.message}",
+                    type = InfoPopupType.ERROR
+                )
+            }
+        }
+    }
+    
+    /**
+     * Aktualizuje istniejący POI z nową listą obrazów.
+     */
+    private suspend fun updatePoiWithPictures(poiId: Int, picturesJson: String) {
+        val backendApi = backendApi ?: run {
+            Log.e("ControllerViewModel", "❌ Backend API is null")
+            return
+        }
+        
+        // Utwórz request z aktualizacją pictures
+        val request = POIUpdateRequest(
+            name = null, // Nie zmieniamy nazwy
+            description = null, // Nie zmieniamy opisu
+            pictures = picturesJson
+        )
+        
+        // Wyślij request
+        val response = backendApi.updatePoi(poiId, request)
+        
+        if (response.isSuccessful) {
+            Log.d("ControllerViewModel", "✅ POI updated successfully with new image")
+            InfoPopupManager.show(
+                message = "Obraz dodany do istniejącego POI",
+                type = InfoPopupType.SUCCESS
+            )
+            // Odśwież listę POI
+            loadMission()
+        } else {
+            Log.e("ControllerViewModel", "❌ Failed to update POI: ${response.code()}")
+            InfoPopupManager.show(
+                message = "Błąd podczas aktualizacji POI: ${response.code()}",
+                type = InfoPopupType.ERROR
+            )
+        }
+    }
+    
+    /**
+     * Tworzy nowy POI z listą obrazów.
+     */
+    private suspend fun createNewPoi(
+        lat: Double,
+        lon: Double,
+        name: String?,
+        description: String?,
+        pictures: List<String>
+    ) {
+        val backendApi = backendApi ?: run {
+            Log.e("ControllerViewModel", "❌ Backend API is null")
+            return
+        }
+        
+        // Konwertuj listę obrazów na JSON string
+        val gson = Gson()
+        val picturesJson = gson.toJson(pictures)
+        
+        // Utwórz request
+        val request = POICreateRequest(
+            missionId = missionId,
+            lat = lat.toString(),
+            lon = lon.toString(),
+            name = name,
+            description = description,
+            pictures = picturesJson
+        )
+        
+        // Wyślij request
+        val response = backendApi.createPoi(request)
+        
+        if (response.isSuccessful) {
+            Log.d("ControllerViewModel", "✅ POI created successfully")
+            InfoPopupManager.show(
+                message = "POI zapisany pomyślnie",
+                type = InfoPopupType.SUCCESS
+            )
+            // Odśwież listę POI
+            loadMission()
+        } else {
+            Log.e("ControllerViewModel", "❌ Failed to create POI: ${response.code()}")
+            InfoPopupManager.show(
+                message = "Błąd podczas zapisywania POI: ${response.code()}",
+                type = InfoPopupType.ERROR
+            )
         }
     }
 }
