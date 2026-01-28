@@ -963,6 +963,27 @@ class ControllerActivity: ComponentActivity() {
                     .align(Alignment.TopStart)
                     .padding(8.dp)
             )
+
+            // Przycisk zapisu klatki z sonaru
+            FloatingActionButton(
+                onClick = {
+                    // TODO: tutaj podłącz logikę zapisu obrazu z sonaru
+                },
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp)
+                    .shadow(16.dp, CircleShape, clip = false)
+                    .clip(CircleShape),
+                containerColor = colorResource(id = R.color.blue)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.save),
+                    contentDescription = "Save sonar frame",
+                    tint = Color.White,
+                modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 
@@ -1031,9 +1052,9 @@ class ControllerActivity: ComponentActivity() {
                     SensorSection(
                         title = "Kąty (deg)",
                         values = listOf(
-                            "X: ${String.format("%.2f", data.angleX)}",
-                            "Y: ${String.format("%.2f", data.angleY)}",
-                            "Z: ${String.format("%.2f", data.angleZ)}"
+                            "X: ${data.angleX}",
+                            "Y: ${data.angleY}",
+                            "Z: ${data.angleZ}"
                         )
                     )
                 }
@@ -1104,6 +1125,27 @@ class ControllerActivity: ComponentActivity() {
                         .align(Alignment.TopStart)
                         .padding(8.dp)
                 )
+
+                // Przycisk zapisu klatki z kamery
+                FloatingActionButton(
+                    onClick = {
+                        // TODO: tutaj podłącz logikę zapisu zdjęcia z kamery
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                        .shadow(16.dp, CircleShape, clip = false)
+                        .clip(CircleShape),
+                    containerColor = colorResource(id = R.color.blue)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.save),
+                        contentDescription = "Save frame",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
             
             // Panel sterowania zwijarki - 15% szerokości, pionowy
