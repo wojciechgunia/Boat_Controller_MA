@@ -68,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -87,6 +86,11 @@ import com.google.accompanist.permissions.shouldShowRationale
 import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
 import pl.poznan.put.boatcontroller.dataclass.ShipOption
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
+import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
+import pl.poznan.put.boatcontroller.ui.theme.ErrorBackground
+import pl.poznan.put.boatcontroller.ui.theme.ErrorText
+import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
+import pl.poznan.put.boatcontroller.ui.theme.ErrorRed
 
 val LocalFormEnabled = compositionLocalOf { true }
 
@@ -151,9 +155,9 @@ fun StatusHeader(
     isLandscape: Boolean
 ) {
     val restText = if (restConnected) "Connected" else "Disconnected"
-    val restColor = if (restConnected) Color.Green else Color.Red
+    val restColor = if (restConnected) SuccessGreen else ErrorRed
     val socketText = if (socketConnected) "Connected" else "Disconnected"
-    val socketColor = if (socketConnected) Color.Green else Color.Red
+    val socketColor = if (socketConnected) SuccessGreen else ErrorRed
 
     val layoutModifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
 
@@ -284,7 +288,7 @@ fun MenuButton(
         shape = RoundedCornerShape(10.dp),
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF4170A6),
+            containerColor = PrimaryBlue,
             contentColor = Color.White
         ),
     ) {
@@ -504,7 +508,7 @@ fun LoginForm(
                     .height(50.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4170A6),
+                    containerColor = PrimaryBlue,
                     contentColor = Color.White
                 ),
                 enabled = formEnabled
@@ -534,7 +538,7 @@ fun LoginForm(
                 enabled = formEnabled
             )
             if (usernameError != null) {
-                Text(usernameError!!, color = Color.Red)
+                Text(usernameError!!, color = ErrorRed)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -554,7 +558,7 @@ fun LoginForm(
                 enabled = formEnabled
             )
             if (passwordError != null) {
-                Text(passwordError!!, color = Color.Red)
+                Text(passwordError!!, color = ErrorRed)
             }
 
             Row(
@@ -564,7 +568,7 @@ fun LoginForm(
                     checked = mainVm.isRemembered,
                     onCheckedChange = { if (formEnabled) mainVm.updateIsRemembered(it) },
                     colors = CheckboxDefaults.colors(
-                        checkedColor = Color(0xFF4170A6),
+                        checkedColor = PrimaryBlue,
                         checkmarkColor = Color.White,
                         uncheckedColor = Color.Gray
                     )
@@ -602,7 +606,7 @@ fun LoginForm(
                     .height(60.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4170A6),
+                    containerColor = PrimaryBlue,
                     contentColor = Color.White
                  ),
              enabled = formEnabled && mainVm.password != "" && mainVm.username != "" && mainVm.selectedShip.name != ""
@@ -645,12 +649,12 @@ fun ErrorBubble(
             modifier = Modifier
                 .wrapContentWidth()
                 .wrapContentHeight()
-                .background(Color(0xFF301D1E))
+                .background(ErrorBackground)
                 .semantics { contentDescription = "Error bubble" }
         ) {
             Column(
                 modifier = Modifier
-                    .background(Color(0xFF301D1E))
+                    .background(ErrorBackground)
                     .padding(12.dp)
                     .widthIn(min = 220.dp, max = 420.dp)
             ) {
@@ -688,7 +692,7 @@ fun ErrorBubble(
 
                 Text(
                     text = message,
-                    color = Color(0xFFEEEEEE),
+                    color = ErrorText,
                     fontSize = 14.sp,
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
@@ -709,7 +713,7 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
     ) {
         val darkTheme = isSystemInDarkTheme()
         Column(
-            modifier = Modifier.background(if (darkTheme) Color.Black else Color.LightGray, RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)).padding(24.dp),
+            modifier = Modifier.background(if (darkTheme) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(text = "Connection settings", fontSize = 6.em, modifier = Modifier.padding(top = 25.dp, bottom = 25.dp))
@@ -756,7 +760,7 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
                     .padding(horizontal = 16.dp)
                     .height(60.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF4170A6),
+                    containerColor = PrimaryBlue,
                     contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(10.dp)) {
@@ -805,7 +809,7 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
                 .padding(horizontal = 16.dp)
                 .height(60.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4170A6),
+                containerColor = PrimaryBlue,
                 contentColor = Color.White
             ),
             shape = RoundedCornerShape(10.dp)
@@ -826,19 +830,19 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
         ) {
             Row {
                 Text("Welcome, ", style = MaterialTheme.typography.headlineMedium)
-                Text(mainVm.username, color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+                Text(mainVm.username, color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
             }
             Row {
                 Text("Current boat: ", style = MaterialTheme.typography.headlineMedium)
-                Text(mainVm.selectedShip.name, color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+                Text(mainVm.selectedShip.name, color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
             }
             Row {
                 Text("Your role: ", style = MaterialTheme.typography.headlineMedium)
-                Text(if(mainVm.isCaptain) "Captain" else "Observer", color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+                Text(if(mainVm.isCaptain) "Captain" else "Observer", color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
             }
             Row {
                 Text("Mission: ", style = MaterialTheme.typography.headlineMedium)
-                Text(if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-", color=colorResource(id = R.color.blue), style = MaterialTheme.typography.headlineMedium)
+                Text(if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-", color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -940,7 +944,7 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
                 .height(60.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF4170A6),
+                containerColor = PrimaryBlue,
                 contentColor = Color.White
             ),
             enabled = selectedMissionLocal.id != -1

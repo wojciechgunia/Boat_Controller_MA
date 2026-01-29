@@ -58,7 +58,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +79,10 @@ import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.FeatureCollection
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
+import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
+import pl.poznan.put.boatcontroller.ui.theme.DarkRed
+import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
+import pl.poznan.put.boatcontroller.ui.theme.VisibilityButtonColor
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -107,12 +110,15 @@ import pl.poznan.put.boatcontroller.dataclass.MapMode
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
-import pl.poznan.put.boatcontroller.templates.FullScreenPopup
+import pl.poznan.put.boatcontroller.templates.poi_window.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopup
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
+import pl.poznan.put.boatcontroller.templates.poi_window.LocalPOIWindowState
+import pl.poznan.put.boatcontroller.templates.poi_window.rememberPOIWindowState
+import androidx.compose.runtime.CompositionLocalProvider
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
@@ -311,15 +317,15 @@ class WaypointActivity : ComponentActivity() {
         isEnabled: Boolean = true
     ) {
         val borderColor = when {
-            !isEnabled -> colorResource(id = R.color.DARK_RED)
-            isEnabled && mapMode == waypointVm.mapMode -> Color.Green
+            !isEnabled -> DarkRed
+            isEnabled && mapMode == waypointVm.mapMode -> SuccessGreen
             isEnabled && mapMode != waypointVm.mapMode -> Color.Transparent
             else -> Color.Transparent
         }
 
         val shadowColor = when {
-            !isEnabled -> colorResource(id = R.color.DARK_RED)
-            isEnabled && mapMode == waypointVm.mapMode -> Color.Green
+            !isEnabled -> DarkRed
+            isEnabled && mapMode == waypointVm.mapMode -> SuccessGreen
             isEnabled && mapMode != waypointVm.mapMode -> Color.Transparent
             else -> Color.Transparent
         }
@@ -350,6 +356,17 @@ class WaypointActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     @Composable
     fun WaypointControlScreen(waypointVm: WaypointViewModel) {
+        // Manager stanu POI - zawsze obecny aby przetrwał obrót ekranu
+        CompositionLocalProvider(
+            LocalPOIWindowState provides rememberPOIWindowState()
+        ) {
+            WaypointControlScreenContent(waypointVm)
+        }
+    }
+    
+    @OptIn(ExperimentalPermissionsApi::class)
+    @Composable
+    private fun WaypointControlScreenContent(waypointVm: WaypointViewModel) {
         val map = waypointVm.mapLibreMapState.value
         val context = LocalContext.current
         val waypoints = waypointVm.waypointPositions.toList()
@@ -549,7 +566,7 @@ class WaypointActivity : ComponentActivity() {
                         .padding(16.dp)
                         .shadow(16.dp, CircleShape, clip = false)
                         .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.blue)
+                    containerColor = PrimaryBlue
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.current_location_tracker),
@@ -571,7 +588,7 @@ class WaypointActivity : ComponentActivity() {
                         .padding(end = 88.dp, bottom = 16.dp)
                         .shadow(16.dp, CircleShape, clip = false)
                         .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.teal_700)
+                    containerColor = VisibilityButtonColor
                 ) {
                     Icon(
                         imageVector = if (!waypointVm.arePoiVisible)

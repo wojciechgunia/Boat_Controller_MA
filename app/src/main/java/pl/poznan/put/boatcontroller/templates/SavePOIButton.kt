@@ -9,8 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
+import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
 import androidx.compose.ui.unit.dp
 import pl.poznan.put.boatcontroller.ConnectionState
 import pl.poznan.put.boatcontroller.ControllerViewModel
@@ -72,7 +72,7 @@ fun SavePOIButton(
         modifier = modifier
             .shadow(16.dp, CircleShape, clip = false)
             .clip(CircleShape),
-        containerColor = colorResource(id = R.color.blue)
+        containerColor = PrimaryBlue
     ) {
         Icon(
             painter = painterResource(id = R.drawable.save),

@@ -1,4 +1,4 @@
-package pl.poznan.put.boatcontroller.templates
+package pl.poznan.put.boatcontroller.templates.poi_window
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.BorderStroke
@@ -37,9 +37,17 @@ import kotlin.text.Typography.nbsp
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.alpha
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import pl.poznan.put.boatcontroller.ui.theme.DarkPlaceholder
+import pl.poznan.put.boatcontroller.ui.theme.LightPlaceholder
+import pl.poznan.put.boatcontroller.ui.theme.ErrorRed
+import pl.poznan.put.boatcontroller.ui.theme.LightImageFrame
+import pl.poznan.put.boatcontroller.ui.theme.DarkImageFrame
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.border
 
 @SuppressLint("AutoboxingStateCreation")
 @Composable
@@ -52,32 +60,49 @@ fun FullScreenPopup(
     onSaveDescription: (Int, String) -> Unit,
     onDelete: (Int) -> Unit
 ) {
-    var currentIndex by remember { mutableIntStateOf(poiId) }
-    var currentPoi by remember { mutableStateOf<POIObject>(
-        POIObject(
-            id = 0,
-            missionId = 0,
-            lon = 0.0,
-            lat = 0.0
-        )
-    ) }
-    val poi = poiList.getOrNull(currentIndex)
-    if (poi != null) {
-        currentPoi = poi
-    }
-
+    // Manager jako jedyne źródło prawdy dla indeksu POI
+    val stateManager = LocalPOIWindowState.current
+    
     if (!isOpen) return
 
     val darkTheme = isSystemInDarkTheme()
-    val backgroundColor = if (darkTheme) Color.Black else Color.White
-    val textColor = if (darkTheme) Color.White else Color.Black
-    val surfaceColor = if (darkTheme) Color(0xFF1E1E1E) else Color.White
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val surfaceColor = MaterialTheme.colorScheme.surface
 
-    var expandedImage by remember { mutableStateOf(false) }
-    var isEditingName by remember { mutableStateOf(false) }
-    var isEditingDescription by remember { mutableStateOf(false) }
-    var nameValue by remember { mutableStateOf(TextFieldValue(currentPoi.name.orEmpty())) }
-    var descriptionValue by remember { mutableStateOf(TextFieldValue(currentPoi.description.orEmpty())) }
+    // Inicjalizacja: jeśli poiId jest prawidłowy (kliknięcie na mapie), użyj go, w przeciwnym razie użyj zapamiętanego z managera
+    var lastPoiId by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(poiId, poiList.size) {
+        if (poiId != lastPoiId) {
+            lastPoiId = poiId
+            if (poiId >= 0 && poiId < poiList.size) {
+                // Kliknięcie na mapie - użyj poiId
+                stateManager.updatePoiIndex(poiId)
+            } else {
+                // Brak kliknięcia - użyj zapamiętanego indeksu (lub 0 jeśli nieprawidłowy)
+                val savedIndex = stateManager.currentPoiIndex
+                if (savedIndex < 0 || savedIndex >= poiList.size) {
+                    stateManager.updatePoiIndex(0)
+                }
+            }
+        }
+    }
+    
+    // Użyj indeksu z managera jako jedynego źródła prawdy
+    // Waliduj indeks względem aktualnej listy
+    val currentIndex = if (poiList.isEmpty()) {
+        0
+    } else {
+        stateManager.currentPoiIndex.coerceIn(0, poiList.size - 1)
+    }
+    
+    // Oblicz currentPoi z currentIndex - nie przechowuj osobno
+    val currentPoi = poiList.getOrNull(currentIndex) ?: POIObject(
+        id = 0,
+        missionId = 0,
+        lon = 0.0,
+        lat = 0.0
+    )
     
     // Parsuj pictures do listy URL
     val picturesList = remember(currentPoi.pictures) {
@@ -94,36 +119,33 @@ fun FullScreenPopup(
         }
     }
     
-    // Indeks aktualnego zdjęcia w ramach POI
-    var currentImageIndex by remember { mutableIntStateOf(0) }
+    // Indeks zdjęcia - zawsze z managera dla aktualnego POI
+    var currentImageIndex by remember(currentPoi.id) { 
+        mutableIntStateOf(stateManager.getImageIndex(currentPoi.id)) 
+    }
     
-    // Resetuj indeks zdjęcia gdy zmienia się POI
-    LaunchedEffect(currentPoi.id) {
-        currentImageIndex = 0
+    // Synchronizuj zmiany indeksu zdjęcia z managerem
+    LaunchedEffect(currentImageIndex, currentPoi.id) {
+        stateManager.updateImageIndex(currentPoi.id, currentImageIndex)
     }
     
     val currentImageUrl = picturesList.getOrNull(currentImageIndex)
 
-    LaunchedEffect(poiId, poiList) {
-        currentIndex = poiId
-        val poi = poiList.getOrNull(currentIndex)
-        if (poi != null) {
-            currentPoi = poi
-            nameValue = TextFieldValue(currentPoi.name.orEmpty())
-            descriptionValue = TextFieldValue(currentPoi.description.orEmpty())
-        }
-    }
+    var expandedImage by remember { mutableStateOf(false) }
+    var isEditingName by remember { mutableStateOf(false) }
+    var isEditingDescription by remember { mutableStateOf(false) }
+    var nameValue by remember(currentPoi.id) { mutableStateOf(TextFieldValue(currentPoi.name.orEmpty())) }
+    var descriptionValue by remember(currentPoi.id) { mutableStateOf(TextFieldValue(currentPoi.description.orEmpty())) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor.copy(alpha = 0.95f))
+            .background(backgroundColor)
     ) {
         if (expandedImage && currentImageUrl != null) {
             ExpandedImageView(
                 imageUrl = currentImageUrl,
                 onClose = { expandedImage = false },
-                darkTheme = darkTheme
             )
         } else {
             Row(Modifier.fillMaxSize()) {
@@ -133,6 +155,7 @@ fun FullScreenPopup(
                     modifier = Modifier
                         .fillMaxHeight()
                         .weight(1f) // Zajmuje resztę przestrzeni
+                        .border(2.dp, if (darkTheme) DarkImageFrame else LightImageFrame)
                 ) {
                     if (currentImageUrl != null) {
                         SwipeableImageSection(
@@ -140,11 +163,14 @@ fun FullScreenPopup(
                             currentIndex = currentImageIndex,
                             onIndexChange = { newIndex ->
                                 // Cykliczne przechodzenie między zdjęciami
-                                currentImageIndex = when {
+                                val finalIndex = when {
                                     newIndex < 0 -> picturesList.lastIndex
                                     newIndex >= picturesList.size -> 0
                                     else -> newIndex
                                 }
+                                currentImageIndex = finalIndex
+                                // Zapisz do managera stanu (dla aktualnego POI)
+                                stateManager.updateImageIndex(currentPoi.id, finalIndex)
                             },
                             onExpand = { expandedImage = true },
                             modifier = Modifier.fillMaxSize()
@@ -154,7 +180,7 @@ fun FullScreenPopup(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(if (darkTheme) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)),
+                                .background(if (darkTheme) DarkPlaceholder else LightPlaceholder),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -181,12 +207,17 @@ fun FullScreenPopup(
                     },
                     onDelete = onDelete,
                     onPrev = {
-                        if (currentIndex > 0) currentIndex-- else currentIndex = poiList.lastIndex
+                        if (poiList.isNotEmpty()) {
+                            val newIndex = if (currentIndex > 0) currentIndex - 1 else poiList.lastIndex
+                            stateManager.updatePoiIndex(newIndex)
+                        }
                     },
                     onNext = {
-                        if (currentIndex < poiList.lastIndex) currentIndex++ else currentIndex = 0
+                        if (poiList.isNotEmpty()) {
+                            val newIndex = if (currentIndex < poiList.lastIndex) currentIndex + 1 else 0
+                            stateManager.updatePoiIndex(newIndex)
+                        }
                     },
-                    darkTheme = darkTheme,
                     textColor = textColor,
                     surfaceColor = surfaceColor,
                     modifier = Modifier.width(280.dp), // Stała szerokość jak wcześniej
@@ -206,14 +237,13 @@ fun FullScreenPopup(
                 onSaveName = {
                     onSaveName(currentPoi.id, nameValue.text)
                     isEditingName = false
-                    currentPoi = currentPoi.copy(name = nameValue.text)
+                    // currentPoi jest obliczany z poiList, więc zaktualizuje się automatycznie po zapisaniu
                 },
                 onSaveDescription = {
                     onSaveDescription(currentPoi.id, descriptionValue.text)
                     isEditingDescription = false
-                    currentPoi = currentPoi.copy(description = descriptionValue.text)
+                    // currentPoi jest obliczany z poiList, więc zaktualizuje się automatycznie po zapisaniu
                 },
-                darkTheme = darkTheme,
                 textColor = textColor,
                 surfaceColor = surfaceColor
             )
@@ -225,7 +255,6 @@ fun FullScreenPopup(
 private fun ExpandedImageView(
     imageUrl: String,
     onClose: () -> Unit,
-    darkTheme: Boolean
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -234,7 +263,7 @@ private fun ExpandedImageView(
     Box(
         Modifier
             .fillMaxSize()
-            .background(if (darkTheme) Color.Black else Color.Black)
+            .background(MaterialTheme.colorScheme.background)
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(1f, 5f)
@@ -341,7 +370,7 @@ private fun SwipeableImageSection(
                                         targetValue = containerWidth,
                                         animationSpec = tween(
                                             durationMillis = 300,
-                                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                            easing = FastOutSlowInEasing
                                         )
                                     )
                                     // Po zakończeniu animacji zmień indeks
@@ -363,7 +392,7 @@ private fun SwipeableImageSection(
                                         targetValue = -containerWidth,
                                         animationSpec = tween(
                                             durationMillis = 300,
-                                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                            easing = FastOutSlowInEasing
                                         )
                                     )
                                     // Po zakończeniu animacji zmień indeks
@@ -384,7 +413,7 @@ private fun SwipeableImageSection(
                                         targetValue = 0f,
                                         animationSpec = tween(
                                             durationMillis = 300,
-                                            easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                            easing = FastOutSlowInEasing
                                         )
                                     )
                                     // Po zakończeniu animacji zresetuj wartości
@@ -477,7 +506,6 @@ private fun ControlPanel(
     onDelete: (Int) -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    darkTheme: Boolean,
     textColor: Color,
     surfaceColor: Color,
     modifier: Modifier = Modifier,
@@ -570,8 +598,8 @@ private fun ControlPanel(
             ) {
                 OutlinedButton(
                     onClick = { showDialog = true },
-                    border = BorderStroke(1.dp, Color.Red),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
+                    border = BorderStroke(1.dp, ErrorRed),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier
                         .width(150.dp)
@@ -580,11 +608,11 @@ private fun ControlPanel(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Delete",
-                        tint = Color.Red,
+                        tint = ErrorRed,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete", color = Color.Red, fontSize = 15.sp)
+                    Text("Delete", color = ErrorRed, fontSize = 15.sp)
                 }
             }
             Row(
@@ -628,7 +656,7 @@ private fun ControlPanel(
                     showDialog = false
                     onDelete(currentPoi.id)
                 }) {
-                    Text("Yes", color = Color.Red)
+                    Text("Yes", color = ErrorRed)
                 }
             },
             dismissButton = {
@@ -650,7 +678,6 @@ private fun EditBar(
     onDescriptionChange: (TextFieldValue) -> Unit,
     onSaveName: () -> Unit,
     onSaveDescription: () -> Unit,
-    darkTheme: Boolean,
     textColor: Color,
     surfaceColor: Color
 ) {

@@ -34,6 +34,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
+import pl.poznan.put.boatcontroller.ui.theme.WarningYellow
+import pl.poznan.put.boatcontroller.ui.theme.ErrorRed
 
 enum class InfoPopupType {
     SUCCESS,
@@ -105,9 +108,9 @@ fun InfoPopupContent(
                     },
                     contentDescription = null,
                     tint = when (type) {
-                        InfoPopupType.SUCCESS -> Color(0xFF4CAF50)
-                        InfoPopupType.WARNING -> Color(0xFFFFC107)
-                        InfoPopupType.ERROR -> Color(0xFFF44336)
+                        InfoPopupType.SUCCESS -> SuccessGreen
+                        InfoPopupType.WARNING -> WarningYellow
+                        InfoPopupType.ERROR -> ErrorRed
                     },
                     modifier = Modifier.size(24.dp)
                 )

@@ -80,7 +80,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.colorResource
+import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
+import pl.poznan.put.boatcontroller.ui.theme.PrimaryLightBlue
+import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
+import pl.poznan.put.boatcontroller.ui.theme.ErrorRed
+import pl.poznan.put.boatcontroller.ui.theme.WarningYellow
+import pl.poznan.put.boatcontroller.ui.theme.VisibilityButtonColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -126,7 +131,7 @@ import pl.poznan.put.boatcontroller.enums.WaypointIndicationType
 import pl.poznan.put.boatcontroller.socket.HttpStreamConfigs
 import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 import pl.poznan.put.boatcontroller.templates.BatteryIndicator
-import pl.poznan.put.boatcontroller.templates.FullScreenPopup
+import pl.poznan.put.boatcontroller.templates.poi_window.FullScreenPopup
 import pl.poznan.put.boatcontroller.templates.HttpStreamView
 import pl.poznan.put.boatcontroller.templates.SavePOIButton
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopup
@@ -135,6 +140,9 @@ import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
+import pl.poznan.put.boatcontroller.templates.poi_window.LocalPOIWindowState
+import pl.poznan.put.boatcontroller.templates.poi_window.rememberPOIWindowState
+import androidx.compose.runtime.CompositionLocalProvider
 import kotlin.math.min
 
 class ControllerActivity: ComponentActivity() {
@@ -339,9 +347,13 @@ class ControllerActivity: ComponentActivity() {
             Row(modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)) {
-                FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
-                    viewModel.openPOIDialog = false
-                })
+                CompositionLocalProvider(
+                    LocalPOIWindowState provides rememberPOIWindowState()
+                ) {
+                    FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
+                        viewModel.openPOIDialog = false
+                    })
+                }
 
             PowerSlider(
                 value = viewModel.leftEnginePower,
@@ -516,9 +528,9 @@ class ControllerActivity: ComponentActivity() {
 
                         val color2 = when {
                             segValue < -70 -> Color.Transparent
-                            segValue > 60 || segValue in -70..-60 -> Color.Red
-                            segValue in 41..60 || segValue in -60..-39 -> Color.Yellow
-                            segValue in 21..40 || segValue in -39..-19 -> Color.Green
+                            segValue > 60 || segValue in -70..-60 -> ErrorRed
+                            segValue in 41..60 || segValue in -60..-39 -> WarningYellow
+                            segValue in 21..40 || segValue in -39..-19 -> SuccessGreen
                             else -> Color.LightGray
                         }
 
@@ -891,7 +903,7 @@ class ControllerActivity: ComponentActivity() {
                         .padding(16.dp)
                         .shadow(16.dp, CircleShape, clip = false)
                         .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.blue)
+                    containerColor = PrimaryBlue
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.current_location_tracker),
@@ -908,7 +920,7 @@ class ControllerActivity: ComponentActivity() {
                         .padding(end = 88.dp, bottom = 16.dp)
                         .shadow(16.dp, CircleShape, clip = false)
                         .clip(CircleShape),
-                    containerColor = colorResource(id = R.color.teal_700)
+                    containerColor = VisibilityButtonColor
                 ) {
                     when (viewModel.layersMode.value) {
                         MapLayersVisibilityMode.BOTH_VISIBLE -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_compass), "Waypoints visible")
@@ -1330,9 +1342,9 @@ class ControllerActivity: ComponentActivity() {
     ) {
         // Uspójniony stan - ten sam co w HttpStreamView
         val (color, text) = when (connectionState) {
-            ConnectionState.Connected -> Color.Green to "Connected"
-            ConnectionState.Reconnecting -> Color.Yellow to "Reconnecting..."
-            ConnectionState.Disconnected -> Color.Red to "Disconnected"
+            ConnectionState.Connected -> SuccessGreen to "Connected"
+            ConnectionState.Reconnecting -> WarningYellow to "Reconnecting..."
+            ConnectionState.Disconnected -> ErrorRed to "Disconnected"
         }
         
         Box(

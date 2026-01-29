@@ -28,6 +28,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
+import pl.poznan.put.boatcontroller.ui.theme.LightGreen
+import pl.poznan.put.boatcontroller.ui.theme.ErrorRed
+import pl.poznan.put.boatcontroller.ui.theme.WarningYellow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -39,9 +43,9 @@ fun BatteryIndicator(
     showPercentage: Boolean = true
 ) {
     val color = when {
-        level < 11 -> Color.Red
-        level < 41 -> Color.Yellow
-        else -> Color.Green
+        level < 11 -> ErrorRed
+        level < 41 -> WarningYellow
+        else -> LightGreen // Jaśniejsza zieleń dla baterii
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "")
@@ -113,14 +117,14 @@ fun BatteryIndicator(
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = "Niski poziom baterii",
-                tint = Color.Yellow,
+                tint = WarningYellow,
                 modifier = Modifier.size(24.dp),
             )
         } else if (level <= 10) {
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = "Bardzo niski poziom baterii",
-                tint = Color.Red.copy(alpha = alphaAnim),
+                tint = ErrorRed.copy(alpha = alphaAnim),
                 modifier = Modifier.size(24.dp)
             )
         }

@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UserData::class], version = 3)
+@Database(entities = [UserData::class], version = 3, exportSchema = false)
 abstract class LocalDatabase : RoomDatabase() {
     abstract fun userDataDao(): UserDataDao
 
