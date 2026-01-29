@@ -140,8 +140,6 @@ import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
-import pl.poznan.put.boatcontroller.templates.poi_window.LocalPOIWindowState
-import pl.poznan.put.boatcontroller.templates.poi_window.rememberPOIWindowState
 import androidx.compose.runtime.CompositionLocalProvider
 import kotlin.math.min
 
@@ -347,13 +345,9 @@ class ControllerActivity: ComponentActivity() {
             Row(modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)) {
-                CompositionLocalProvider(
-                    LocalPOIWindowState provides rememberPOIWindowState()
-                ) {
-                    FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
-                        viewModel.openPOIDialog = false
-                    })
-                }
+                FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
+                    viewModel.openPOIDialog = false
+                })
 
             PowerSlider(
                 value = viewModel.leftEnginePower,

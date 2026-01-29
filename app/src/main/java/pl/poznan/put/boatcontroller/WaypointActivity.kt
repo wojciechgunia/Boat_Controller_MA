@@ -116,9 +116,6 @@ import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
-import pl.poznan.put.boatcontroller.templates.poi_window.LocalPOIWindowState
-import pl.poznan.put.boatcontroller.templates.poi_window.rememberPOIWindowState
-import androidx.compose.runtime.CompositionLocalProvider
 
 class WaypointActivity : ComponentActivity() {
     private val waypointVm by viewModels<WaypointViewModel>()
@@ -356,17 +353,6 @@ class WaypointActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     @Composable
     fun WaypointControlScreen(waypointVm: WaypointViewModel) {
-        // Manager stanu POI - zawsze obecny aby przetrwał obrót ekranu
-        CompositionLocalProvider(
-            LocalPOIWindowState provides rememberPOIWindowState()
-        ) {
-            WaypointControlScreenContent(waypointVm)
-        }
-    }
-    
-    @OptIn(ExperimentalPermissionsApi::class)
-    @Composable
-    private fun WaypointControlScreenContent(waypointVm: WaypointViewModel) {
         val map = waypointVm.mapLibreMapState.value
         val context = LocalContext.current
         val waypoints = waypointVm.waypointPositions.toList()

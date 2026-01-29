@@ -1,6 +1,7 @@
 package pl.poznan.put.boatcontroller.templates.poi_window
 
 import android.annotation.SuppressLint
+import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,9 +62,6 @@ fun FullScreenPopup(
     onSaveDescription: (Int, String) -> Unit,
     onDelete: (Int) -> Unit
 ) {
-    // Manager jako jedyne źródło prawdy dla indeksu POI
-    val stateManager = LocalPOIWindowState.current
-    
     if (!isOpen) return
 
     val darkTheme = isSystemInDarkTheme()
@@ -70,33 +69,63 @@ fun FullScreenPopup(
     val textColor = MaterialTheme.colorScheme.onBackground
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    // Inicjalizacja: jeśli poiId jest prawidłowy (kliknięcie na mapie), użyj go, w przeciwnym razie użyj zapamiętanego z managera
-    var lastPoiId by remember { mutableIntStateOf(-1) }
+    // Obserwuj indeks POI z managera używając StateFlow (jak SocketRepository.batteryLevel)
+    val managerPoiIndex by POIWindowStateManager.currentPoiIndex.collectAsState()
+    
+    // Loguj wartości z managera
+    LaunchedEffect(managerPoiIndex) {
+        Log.d("POIWindow", "managerPoiIndex zmienił się na: $managerPoiIndex")
+    }
+    
+    // Inicjalizacja tylko raz przy pierwszym otwarciu - jeśli poiId jest prawidłowy (kliknięcie na mapie), użyj go
+    // Po inicjalizacji używamy tylko wartości z managera (przetrwa obrót ekranu)
+    var initialized by rememberSaveable { mutableStateOf(false) }
+    var lastPoiId by rememberSaveable { mutableIntStateOf(-1) }
     LaunchedEffect(poiId, poiList.size) {
-        if (poiId != lastPoiId) {
+        // Inicjalizuj tylko raz przy pierwszym otwarciu lub gdy poiId się zmienia (nowe kliknięcie na mapie)
+        if ((!initialized || poiId != lastPoiId) && poiList.isNotEmpty()) {
+            initialized = true
             lastPoiId = poiId
+            Log.d("POIWindow", "LaunchedEffect(poiId): poiId=$poiId, managerPoiIndex=$managerPoiIndex, poiList.size=${poiList.size}, initialized=$initialized")
             if (poiId >= 0 && poiId < poiList.size) {
-                // Kliknięcie na mapie - użyj poiId
-                stateManager.updatePoiIndex(poiId)
-            } else {
-                // Brak kliknięcia - użyj zapamiętanego indeksu (lub 0 jeśli nieprawidłowy)
-                val savedIndex = stateManager.currentPoiIndex
-                if (savedIndex < 0 || savedIndex >= poiList.size) {
-                    stateManager.updatePoiIndex(0)
+                // Kliknięcie na mapie - użyj poiId jako indeksu tylko jeśli różni się od wartości w managerze
+                if (managerPoiIndex != poiId) {
+                    Log.d("POIWindow", "Kliknięcie na mapie - ustawiam poiIndex=$poiId (było: $managerPoiIndex)")
+                    POIWindowStateManager.updatePoiIndex(poiId)
+                } else {
+                    Log.d("POIWindow", "Kliknięcie na mapie - poiIndex już jest ustawiony na $poiId")
                 }
+            } else {
+                // Jeśli poiId jest nieprawidłowy, nie rób nic - użyj zapamiętanego z managera
+                Log.d("POIWindow", "poiId nieprawidłowy ($poiId) - używam managerPoiIndex=$managerPoiIndex")
             }
+        } else {
+            Log.d("POIWindow", "LaunchedEffect(poiId): pomijam - initialized=$initialized, poiId=$poiId, lastPoiId=$lastPoiId")
         }
     }
     
-    // Użyj indeksu z managera jako jedynego źródła prawdy
-    // Waliduj indeks względem aktualnej listy
+    // Waliduj indeks z managera tylko gdy lista się zmienia
+    LaunchedEffect(poiList.size) {
+        if (poiList.isNotEmpty() && managerPoiIndex >= poiList.size) {
+            Log.d("POIWindow", "Lista się zmieniła - waliduję indeks: managerPoiIndex=$managerPoiIndex >= poiList.size=${poiList.size}")
+            POIWindowStateManager.updatePoiIndex(0)
+        }
+    }
+    
+    // Waliduj indeks z managera względem aktualnej listy
     val currentIndex = if (poiList.isEmpty()) {
         0
     } else {
-        stateManager.currentPoiIndex.coerceIn(0, poiList.size - 1)
+        managerPoiIndex.coerceIn(0, poiList.size - 1)
     }
     
-    // Oblicz currentPoi z currentIndex - nie przechowuj osobno
+    // Loguj currentIndex
+    LaunchedEffect(currentIndex) {
+        Log.d("POIWindow", "currentIndex zmienił się na: $currentIndex (managerPoiIndex=$managerPoiIndex)")
+    }
+    
+    
+    // Oblicz currentPoi z currentIndex
     val currentPoi = poiList.getOrNull(currentIndex) ?: POIObject(
         id = 0,
         missionId = 0,
@@ -119,14 +148,50 @@ fun FullScreenPopup(
         }
     }
     
-    // Indeks zdjęcia - zawsze z managera dla aktualnego POI
-    var currentImageIndex by remember(currentPoi.id) { 
-        mutableIntStateOf(stateManager.getImageIndex(currentPoi.id)) 
+    // Obserwuj indeks zdjęcia z managera używając StateFlow
+    val managerImageIndex by POIWindowStateManager.currentImageIndex.collectAsState()
+    
+    // Loguj wartości z managera
+    LaunchedEffect(managerImageIndex) {
+        Log.d("POIWindow", "managerImageIndex zmienił się na: $managerImageIndex")
     }
     
-    // Synchronizuj zmiany indeksu zdjęcia z managerem
-    LaunchedEffect(currentImageIndex, currentPoi.id) {
-        stateManager.updateImageIndex(currentPoi.id, currentImageIndex)
+    // Lokalna zmienna do aktualizacji (synchronizowana z managerem)
+    // Używamy rememberSaveable tylko dla tej zmiennej - musi przetrwać obrót ekranu
+    var lastPoiIdForImage by rememberSaveable { mutableIntStateOf(-1) }
+    var currentImageIndex by remember { mutableIntStateOf(managerImageIndex) }
+    
+    // Gdy zmienia się POI (currentPoi.id), resetuj indeks zdjęcia
+    LaunchedEffect(currentPoi.id) {
+        Log.d("POIWindow", "LaunchedEffect(currentPoi.id): currentPoi.id=${currentPoi.id}, lastPoiIdForImage=$lastPoiIdForImage")
+        if (currentPoi.id != lastPoiIdForImage) {
+            lastPoiIdForImage = currentPoi.id
+            // Resetuj tylko gdy POI się zmienia
+            Log.d("POIWindow", "POI się zmienił - resetuję imageIndex do 0")
+            currentImageIndex = 0
+            POIWindowStateManager.updateImageIndex(0)
+        }
+    }
+    
+    // Przywróć wartość z managera gdy się zmienia (po obrocie ekranu)
+    // Ale tylko jeśli POI się nie zmienił (żeby nie nadpisać resetu)
+    LaunchedEffect(managerImageIndex, currentPoi.id) {
+        Log.d("POIWindow", "LaunchedEffect(managerImageIndex): managerImageIndex=$managerImageIndex, currentPoi.id=${currentPoi.id}, lastPoiIdForImage=$lastPoiIdForImage, currentImageIndex=$currentImageIndex")
+        // Przywróć tylko jeśli POI się nie zmienił (żeby nie nadpisać resetu)
+        if (currentPoi.id == lastPoiIdForImage && currentImageIndex != managerImageIndex) {
+            Log.d("POIWindow", "Przywracam imageIndex z managera: $managerImageIndex")
+            currentImageIndex = managerImageIndex
+        }
+    }
+    
+    // Synchronizuj zmiany indeksu zdjęcia z managerem (gdy użytkownik nawiguje)
+    LaunchedEffect(currentImageIndex) {
+        Log.d("POIWindow", "LaunchedEffect(currentImageIndex): currentImageIndex=$currentImageIndex, currentPoi.id=${currentPoi.id}, lastPoiIdForImage=$lastPoiIdForImage")
+        // Aktualizuj managera tylko jeśli wartość się zmieniła i POI się nie zmienił
+        if (currentPoi.id == lastPoiIdForImage && POIWindowStateManager.currentImageIndex.value != currentImageIndex) {
+            Log.d("POIWindow", "Aktualizuję managera imageIndex: $currentImageIndex")
+            POIWindowStateManager.updateImageIndex(currentImageIndex)
+        }
     }
     
     val currentImageUrl = picturesList.getOrNull(currentImageIndex)
@@ -169,8 +234,8 @@ fun FullScreenPopup(
                                     else -> newIndex
                                 }
                                 currentImageIndex = finalIndex
-                                // Zapisz do managera stanu (dla aktualnego POI)
-                                stateManager.updateImageIndex(currentPoi.id, finalIndex)
+                                // Zapisz do managera
+                                POIWindowStateManager.updateImageIndex(finalIndex)
                             },
                             onExpand = { expandedImage = true },
                             modifier = Modifier.fillMaxSize()
@@ -209,13 +274,13 @@ fun FullScreenPopup(
                     onPrev = {
                         if (poiList.isNotEmpty()) {
                             val newIndex = if (currentIndex > 0) currentIndex - 1 else poiList.lastIndex
-                            stateManager.updatePoiIndex(newIndex)
+                            POIWindowStateManager.updatePoiIndex(newIndex)
                         }
                     },
                     onNext = {
                         if (poiList.isNotEmpty()) {
                             val newIndex = if (currentIndex < poiList.lastIndex) currentIndex + 1 else 0
-                            stateManager.updatePoiIndex(newIndex)
+                            POIWindowStateManager.updatePoiIndex(newIndex)
                         }
                     },
                     textColor = textColor,

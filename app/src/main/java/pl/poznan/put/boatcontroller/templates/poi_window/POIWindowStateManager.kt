@@ -1,79 +1,57 @@
 package pl.poznan.put.boatcontroller.templates.poi_window
 
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.Composable
+import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Manager stanu dla POIWindow - zapisuje stan przy obrocie ekranu
- * Przechowuje:
- * - currentPoiIndex - indeks aktualnego POI
- * - imageIndexMap - mapa POI ID -> indeks zdjęcia (zapamiętuje indeks zdjęcia dla każdego POI osobno)
+ * Manager stanu dla POIWindow - prosty singleton jak SocketRepository
+ * Przechowuje tylko aktualny stan w MutableStateFlow (obserwowalny przez Compose i przetrwa obrót ekranu)
+ * - currentPoiIndex - aktualny indeks POI w liście (który POI jest przeglądany)
+ * - currentImageIndex - indeks zdjęcia dla aktualnego POI (tylko dla tego który przeglądamy)
  */
-class POIWindowStateManager(
-    initialPoiIndex: Int = 0
-) {
-    var currentPoiIndex by mutableIntStateOf(initialPoiIndex)
-    // Mapa przechowująca indeks zdjęcia dla każdego POI (klucz: POI ID, wartość: indeks zdjęcia)
-    private val imageIndexMap = mutableStateOf<Map<Int, Int>>(emptyMap())
+object POIWindowStateManager {
+    private const val TAG = "POIWindowStateManager"
     
-    fun reset() {
-        currentPoiIndex = 0
-        imageIndexMap.value = emptyMap()
-    }
+    // Aktualny indeks POI w liście (np. 0 = pierwszy POI, 1 = drugi POI)
+    // MutableStateFlow - obserwowalny przez Compose i przetrwa obrót ekranu (jak SocketRepository)
+    private val _currentPoiIndex = MutableStateFlow(0)
+    val currentPoiIndex: StateFlow<Int> = _currentPoiIndex.asStateFlow()
     
+    // Indeks zdjęcia dla aktualnego POI (tylko dla tego który aktualnie przeglądamy)
+    // MutableStateFlow - obserwowalny przez Compose i przetrwa obrót ekranu
+    private val _currentImageIndex = MutableStateFlow(0)
+    val currentImageIndex: StateFlow<Int> = _currentImageIndex.asStateFlow()
+    
+    /**
+     * Aktualizuj indeks POI
+     */
     fun updatePoiIndex(index: Int) {
-        currentPoiIndex = index
-        // Nie resetuj indeksu zdjęcia - zachowaj dla każdego POI osobno
+        Log.d(TAG, "updatePoiIndex: $index (było: ${_currentPoiIndex.value})")
+        _currentPoiIndex.value = index
+        Log.d(TAG, "updatePoiIndex: po aktualizacji = ${_currentPoiIndex.value}")
     }
     
-    fun getImageIndex(poiId: Int): Int {
-        return imageIndexMap.value[poiId] ?: 0
+    /**
+     * Aktualizuj indeks zdjęcia
+     */
+    fun updateImageIndex(index: Int) {
+        Log.d(TAG, "updateImageIndex: $index (było: ${_currentImageIndex.value})")
+        _currentImageIndex.value = index
+        Log.d(TAG, "updateImageIndex: po aktualizacji = ${_currentImageIndex.value}")
     }
     
-    fun updateImageIndex(poiId: Int, index: Int) {
-        imageIndexMap.value = imageIndexMap.value + (poiId to index)
+    /**
+     * Resetuj cały stan
+     */
+    fun resetAll() {
+        Log.d(TAG, "resetAll")
+        _currentPoiIndex.value = 0
+        _currentImageIndex.value = 0
     }
     
-    companion object {
-        val Saver: Saver<POIWindowStateManager, *> = Saver(
-            save = { manager ->
-                // Zapisz currentPoiIndex i mapę jako listę par [poiId, imageIndex]
-                val mapEntries = manager.imageIndexMap.value.entries.flatMap { listOf(it.key, it.value) }
-                listOf(manager.currentPoiIndex, manager.imageIndexMap.value.size) + mapEntries
-            },
-            restore = { saved ->
-                val poiIndex = saved[0] as Int
-                val mapSize = saved[1] as Int
-                val map = mutableMapOf<Int, Int>()
-                for (i in 0 until mapSize) {
-                    val poiId = saved[2 + i * 2] as Int
-                    val imageIndex = saved[3 + i * 2] as Int
-                    map[poiId] = imageIndex
-                }
-                POIWindowStateManager(initialPoiIndex = poiIndex).apply {
-                    imageIndexMap.value = map
-                }
-            }
-        )
+    init {
+        Log.d(TAG, "POIWindowStateManager initialized - currentPoiIndex=${_currentPoiIndex.value}, currentImageIndex=${_currentImageIndex.value}")
     }
 }
-
-val LocalPOIWindowState = compositionLocalOf<POIWindowStateManager> { 
-    error("No POIWindowStateManager provided") 
-}
-
-@Composable
-fun rememberPOIWindowState(): POIWindowStateManager {
-    // Użyj rememberSaveable z custom Saver aby przetrwał obrót ekranu
-    // Klucz "poi_window_state" zapewnia że stan jest zapisywany i przywracany nawet gdy kompozycja jest usuwana
-    return rememberSaveable(key = "poi_window_state", saver = POIWindowStateManager.Saver) {
-        POIWindowStateManager()
-    }
-}
-
