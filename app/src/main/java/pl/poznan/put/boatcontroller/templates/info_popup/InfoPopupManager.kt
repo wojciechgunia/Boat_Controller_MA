@@ -1,20 +1,20 @@
 package pl.poznan.put.boatcontroller.templates.info_popup
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 object InfoPopupManager {
-    var message by mutableStateOf<String?>(null)
-        private set
-    var type by mutableStateOf<InfoPopupType?>(null)
-        private set
+    private val _message = MutableStateFlow<String?>(null)
+    val message = _message.asStateFlow()
+    
+    private val _type = MutableStateFlow<InfoPopupType?>(null)
+    val type = _type.asStateFlow()
 
     private var hideJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -22,19 +22,19 @@ object InfoPopupManager {
 
     fun show(message: String, type: InfoPopupType, duration: Long = DEFAULT_SHOW_TIME) {
         hideJob?.cancel()
-        this.message = message
-        this.type = type
+        _message.value = message
+        _type.value = type
 
         hideJob = scope.launch {
             delay(duration)
-            this@InfoPopupManager.message = null
-            this@InfoPopupManager.type = null
+            _message.value = null
+            _type.value = null
         }
     }
 
     fun hide() {
         hideJob?.cancel()
-        message = null
-        type = null
+        _message.value = null
+        _type.value = null
     }
 }

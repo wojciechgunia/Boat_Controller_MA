@@ -4,20 +4,13 @@ package pl.poznan.put.boatcontroller
 import android.app.Application
 import android.graphics.Bitmap
 import android.util.Log
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -35,55 +28,67 @@ import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.dataclass.WaypointUpdateRequest
 import pl.poznan.put.boatcontroller.enums.ShipDirection
 import pl.poznan.put.boatcontroller.mappers.toDomain
-import java.util.concurrent.atomic.AtomicInteger
-import pl.poznan.put.boatcontroller.socket.SocketRepository
-import pl.poznan.put.boatcontroller.socket.SocketEvent
 import pl.poznan.put.boatcontroller.socket.SocketCommand
+import pl.poznan.put.boatcontroller.socket.SocketEvent
+import pl.poznan.put.boatcontroller.socket.SocketRepository
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.sqrt
 
 class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
     private val repo = Repository(app.applicationContext)
-    var missionId by mutableIntStateOf(-1)
-        private set
+    
+    private val _missionId = MutableStateFlow(-1)
+    val missionId = _missionId.asStateFlow()
 
-    var isToolbarOpened by mutableStateOf(false)
+    private val _isToolbarOpened = MutableStateFlow(false)
+    val isToolbarOpened = _isToolbarOpened.asStateFlow()
+    fun setToolbarOpened(opened: Boolean) { _isToolbarOpened.value = opened }
 
-    var openPOIDialog by mutableStateOf(false)
+    private val _openPOIDialog = MutableStateFlow(false)
+    val openPOIDialog = _openPOIDialog.asStateFlow()
+    fun setOpenPOIDialog(open: Boolean) { _openPOIDialog.value = open }
 
-    var poiId by mutableIntStateOf(-1)
+    private val _poiId = MutableStateFlow(-1)
+    val poiId = _poiId.asStateFlow()
+    fun setPoiId(id: Int) { _poiId.value = id }
 
-    private val _mapLibreMapState = mutableStateOf<MapLibreMap?>(null)
-    val mapLibreMapState: MutableState<MapLibreMap?> = _mapLibreMapState
+    private val _mapLibreMapState = MutableStateFlow<MapLibreMap?>(null)
+    val mapLibreMapState = _mapLibreMapState.asStateFlow()
 
-    private val _phonePosition = mutableStateOf<DoubleArray?>(null)
-    val phonePosition: MutableState<DoubleArray?> = _phonePosition
+    private val _phonePosition = MutableStateFlow<DoubleArray?>(null)
+    val phonePosition = _phonePosition.asStateFlow()
 
-    private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
-    val shipPosition: MutableState<ShipPosition> = _shipPosition
+    private val _shipPosition = MutableStateFlow(ShipPosition(52.404633, 16.957722))
+    val shipPosition = _shipPosition.asStateFlow()
 
-    private var _currentShipDirection = mutableStateOf<ShipDirection>(ShipDirection.DEFAULT)
-    var currentShipDirection: MutableState<ShipDirection> = _currentShipDirection
+    private val _currentShipDirection = MutableStateFlow(ShipDirection.DEFAULT)
+    val currentShipDirection = _currentShipDirection.asStateFlow()
 
-    private var _waypointPositions = mutableStateListOf<WaypointObject>()
-    var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
+    private val _waypointPositions = MutableStateFlow<List<WaypointObject>>(emptyList())
+    val waypointPositions = _waypointPositions.asStateFlow()
 
-    private val _waypointBitmaps = mutableStateMapOf<Int, Bitmap>()
-    val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
+    private val _waypointBitmaps = MutableStateFlow<Map<Int, Bitmap>>(emptyMap())
+    val waypointBitmaps = _waypointBitmaps.asStateFlow()
 
-    var waypointToMoveNo: Int? by mutableStateOf(null)
-    var mapMode by mutableStateOf<MapMode>(MapMode.None)
-        private set
+    private val _waypointToMoveNo = MutableStateFlow<Int?>(null)
+    val waypointToMoveNo = _waypointToMoveNo.asStateFlow()
+    fun setWaypointToMoveNo(no: Int?) { _waypointToMoveNo.value = no }
 
-    private var _poiPositions = mutableStateListOf<POIObject>()
-    var poiPositions: SnapshotStateList<POIObject> = _poiPositions
+    private val _mapMode = MutableStateFlow<MapMode>(MapMode.None)
+    val mapMode = _mapMode.asStateFlow()
 
-    var arePoiVisible by mutableStateOf(false)
+    private val _poiPositions = MutableStateFlow<List<POIObject>>(emptyList())
+    val poiPositions = _poiPositions.asStateFlow()
 
-    private val _isShipMoving = mutableStateOf(false)
-    val isShipMoving: MutableState<Boolean> = _isShipMoving
+    private val _arePoiVisible = MutableStateFlow(false)
+    val arePoiVisible = _arePoiVisible.asStateFlow()
+    fun setArePoiVisible(visible: Boolean) { _arePoiVisible.value = visible }
+
+    private val _isShipMoving = MutableStateFlow(false)
+    val isShipMoving = _isShipMoving.asStateFlow()
     
     // Nawigacja waypointowa
     private var currentWaypointIndex = -1
@@ -92,11 +97,12 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private var lastCompletedWaypoint: WaypointObject? = null  // Ostatni osiągnięty waypoint (zapamiętany po zakończeniu trasy)
     private val waypointReachedThreshold = 0.0001 // ~11 metrów
 
-    private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
-    val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
+    private val _cameraPosition = MutableStateFlow<CameraPositionState?>(null)
+    val cameraPosition = _cameraPosition.asStateFlow()
 
     // Używamy wspólnego stanu baterii z SocketRepository
-    val externalBatteryLevel: MutableState<Int?> = mutableStateOf(SocketRepository.batteryLevel.value)
+    private val _externalBatteryLevel = MutableStateFlow<Int?>(SocketRepository.batteryLevel.value)
+    val externalBatteryLevel = _externalBatteryLevel.asStateFlow()
 
     private val seq = AtomicInteger(0)
 
@@ -109,7 +115,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         // Obserwuj zmiany baterii z SocketRepository
         viewModelScope.launch {
             SocketRepository.batteryLevel.collectLatest { level ->
-                externalBatteryLevel.value = level
+                _externalBatteryLevel.value = level
             }
         }
     }
@@ -118,8 +124,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 repo.get().collect { userData ->
-                    if (userData.selectedMissionId != -1 && missionId == -1) {
-                        missionId = userData.selectedMissionId
+                    if (userData.selectedMissionId != -1 && missionId.value == -1) {
+                        _missionId.value = userData.selectedMissionId
                         initModel()
                     }
                 }
@@ -156,7 +162,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         
                         // Sprawdź czy osiągnięto ostatni zapamiętany waypoint (gdy waypointy są puste)
-                        if (_isShipMoving.value && !isGoingHome && _waypointPositions.isEmpty() && lastCompletedWaypoint != null) {
+                        if (_isShipMoving.value && !isGoingHome && _waypointPositions.value.isEmpty() && lastCompletedWaypoint != null) {
                             val distance = calculateDistance(
                                 newPosition.lat, newPosition.lon,
                                 lastCompletedWaypoint!!.lat, lastCompletedWaypoint!!.lon
@@ -173,9 +179,9 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         
                         // Sprawdź czy osiągnięto waypoint (tylko w trybie waypoint i gdy statek się porusza, ale NIE gdy wracamy do domu)
-                        if (_isShipMoving.value && !isGoingHome && currentWaypointIndex >= 0 && _waypointPositions.isNotEmpty()) {
+                        if (_isShipMoving.value && !isGoingHome && currentWaypointIndex >= 0 && _waypointPositions.value.isNotEmpty()) {
                             // Sortuj waypointy przed użyciem
-                            val sortedWaypoints = _waypointPositions.sortedBy { it.no }
+                            val sortedWaypoints = _waypointPositions.value.sortedBy { it.no }
                             
                             if (currentWaypointIndex < sortedWaypoints.size) {
                                 val targetWp = sortedWaypoints[currentWaypointIndex]
@@ -247,18 +253,17 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun initModel() {
         viewModelScope.launch {
             try {
-                Log.d("Get Mission Id", missionId.toString())
+                Log.d("Get Mission Id", missionId.value.toString())
                 backendApi = ApiClient.create(getApplication())
                 loadMission()
                 backendApi?.let { api ->
-                    val response = api.getWaypointsList(missionId)
+                    val response = api.getWaypointsList(missionId.value)
                     if (response.isSuccessful) {
                         val list = response.body()!!.map { it.toDomain() }
                         if (list.isNotEmpty()) {
-                            _waypointPositions.clear()
-                            _waypointPositions.addAll(list)
+                            _waypointPositions.value = list
                         }
-                        Log.d("Way", _waypointPositions.toString())
+                        Log.d("Way", _waypointPositions.value.toString())
                     } else {
                         Log.e("API", "Błąd pobierania waypoints")
                     }
@@ -273,12 +278,11 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMission() {
         viewModelScope.launch {
             backendApi?.let { api ->
-                val response = api.getPoiList(missionId)
+                val response = api.getPoiList(missionId.value)
                 if (response.isSuccessful) {
                     val poiList = response.body()!!.map { it.toDomain() }
-                    _poiPositions.clear()
-                    _poiPositions.addAll(poiList)
-                    Log.d("POI", _poiPositions.toString())
+                    _poiPositions.value = poiList
+                    Log.d("POI", _poiPositions.value.toString())
                 }
             }
         }
@@ -353,7 +357,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     Log.d("WaypointViewModel", "🏠 Wznowiono powrót do domu")
                 } else {
                     // Normalna nawigacja waypointowa
-                    if (_waypointPositions.isEmpty()) {
+                    if (_waypointPositions.value.isEmpty()) {
                         // Jeśli waypointy są puste, ale mamy zapamiętany ostatni waypoint (po powrocie do domu)
                         if (lastCompletedWaypoint != null) {
                             // Zapisz pozycję startową jako home
@@ -385,7 +389,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                         lastCompletedWaypoint = null  // Reset zapamiętanego waypointa
                         
                         // Sortuj waypointy po numerze (no) przed użyciem
-                        val sortedWaypoints = _waypointPositions.sortedBy { it.no }
+                        val sortedWaypoints = _waypointPositions.value.sortedBy { it.no }
                         
                         // Wyślij ST (Start)
                         sendAction("ST", "")
@@ -417,7 +421,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
 
     fun getNextAvailableWaypointNo(): Int {
-        val usedIds = _waypointPositions.map { it.no }.toSet()
+        val usedIds = _waypointPositions.value.map { it.no }.toSet()
         var no = 1
         while (no in usedIds) {
             no++
@@ -426,7 +430,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getWaypointByNo(no: Int): WaypointObject? {
-        return waypointPositions.find { it.no == no }
+        return waypointPositions.value.find { it.no == no }
     }
 
     fun addWaypoint(lon: Double, lat: Double) {
@@ -434,7 +438,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val req = WaypointCreateRequest(
-                    missionId = missionId,
+                    missionId = missionId.value,
                     no = no,
                     lon = lon.toString(),
                     lat = lat.toString()
@@ -443,7 +447,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 backendApi?.createWaypoint(req)
 
                 val waypoint = WaypointObject(no, lon, lat)
-                _waypointPositions.add(waypoint)
+                _waypointPositions.value = _waypointPositions.value + waypoint
                 sendAction("SW", "${lon};${lat}")
             } catch (e: Exception) {
                 Log.e("API", "Błąd dodawania waypointu", e)
@@ -454,7 +458,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     private fun clearAllWaypoints() {
         viewModelScope.launch {
             try {
-                val response = backendApi?.getWaypointsList(missionId)
+                val response = backendApi?.getWaypointsList(missionId.value)
                 if (response == null || !response.isSuccessful) {
                     Log.e("API", "Nie udało się pobrać waypointów do usunięcia")
                     return@launch
@@ -473,7 +477,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 // Wyczyść listę waypointów
-                _waypointPositions.clear()
+                _waypointPositions.value = emptyList()
                 
                 Log.d("WaypointViewModel", "Wszystkie waypointy zostały usunięte")
             } catch (e: Exception) {
@@ -485,7 +489,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun removeWaypoint(no: Int) {
         viewModelScope.launch {
             try {
-                val response = backendApi?.getWaypointsList(missionId)
+                val response = backendApi?.getWaypointsList(missionId.value)
                 if (response == null || !response.isSuccessful) {
                     Log.e("API", "Nie udało się pobrać waypointów")
                     return@launch
@@ -506,8 +510,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                         wp.no = wp.no - 1
                     }
 
-                    _waypointPositions.clear()
-                    _waypointPositions.addAll(waypoints.map { it.toDomain() })
+                    _waypointPositions.value = waypoints.map { it.toDomain() }
 
                     // Brak dedykowanej komendy usunięcia w nowym protokole – pomijamy wysyłkę.
                 } else {
@@ -522,7 +525,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     fun moveWaypoint(no: Int, newLon: Double, newLat: Double) {
         viewModelScope.launch {
             try {
-                val response = backendApi?.getWaypointsList(missionId)
+                val response = backendApi?.getWaypointsList(missionId.value)
                 if (response == null || !response.isSuccessful) {
                     Log.e("API", "Nie udało się pobrać waypointów")
                     return@launch
@@ -537,9 +540,11 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     backendApi?.updateWaypoint(targetWp.id, req)
 
-                    val index = _waypointPositions.indexOfFirst { it.no == no }
+                    val currentList = _waypointPositions.value.toMutableList()
+                    val index = currentList.indexOfFirst { it.no == no }
                     if (index != -1) {
-                        _waypointPositions[index] = _waypointPositions[index].copy(lon = newLon, lat = newLat)
+                        currentList[index] = currentList[index].copy(lon = newLon, lat = newLat)
+                        _waypointPositions.value = currentList
                     }
                     // Aktualizujemy pozycję poprzez akcję SW (ustaw waypoint)
                     sendAction("SW", "${newLon};${newLat}")
@@ -553,7 +558,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
-        _waypointBitmaps[id] = bitmap
+        _waypointBitmaps.update { it + (id to bitmap) }
     }
 
     fun setMapReady(map: MapLibreMap) {
@@ -564,13 +569,9 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
         _phonePosition.value = doubleArrayOf(lat, lon)
     }
 
-    fun setPhonePositionFallback() {
-        val shipPos = _shipPosition.value
-        setPhonePosition(shipPos.lat, shipPos.lon)
-    }
-
     fun toggleMapEditMode(mode: MapMode) {
-        mapMode = if (mapMode == mode) {
+        val current = _mapMode.value
+        _mapMode.value = if (current == mode) {
             MapMode.None
         } else {
             mode
@@ -591,7 +592,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getWaypointsFeature(): List<Feature> {
-        return _waypointPositions.map {
+        return _waypointPositions.value.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("no", it.no.toString())
                 addStringProperty("icon", "waypoint-icon-${it.no}")
@@ -600,8 +601,8 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getPoiFeature(): List<Feature> {
-        Log.d("POI", _poiPositions.toString())
-        return _poiPositions.map {
+        Log.d("POI", _poiPositions.value.toString())
+        return _poiPositions.value.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "poi-icon")
@@ -627,7 +628,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getConnectionLinesFeature(): List<Feature> {
         val lines = mutableListOf<Feature>()
-        val waypoints = _waypointPositions.sortedBy { it.no }
+        val waypoints = _waypointPositions.value.sortedBy { it.no }
 
         waypoints.firstOrNull()?.let { firstWp ->
             val shipPos = _shipPosition.value

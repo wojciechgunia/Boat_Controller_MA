@@ -18,7 +18,7 @@ object SocketRepository {
     private val _events = MutableSharedFlow<SocketEvent>(extraBufferCapacity = 50)
     val events = _events.asSharedFlow()
 
-    val connectionState = service.connectionState
+    val connectionState = service.connectionState.asStateFlow()
 
     private val _batteryLevel = MutableStateFlow<Int?>(100)
     val batteryLevel: StateFlow<Int?> = _batteryLevel.asStateFlow()

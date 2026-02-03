@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import pl.poznan.put.boatcontroller.ConnectionState
 
@@ -28,15 +29,15 @@ class HttpStreamService(
     private var reconnectingAttempts = 0 // Licznik prób połączenia w stanie Reconnecting
     private var previousState: ConnectionState? = null // Poprzedni stan do wykrywania zmian
     
-    val connectionState = MutableSharedFlow<ConnectionState>(replay = 1)
-    val errorMessage = MutableSharedFlow<String?>(replay = 1)
+    val connectionState = MutableStateFlow(ConnectionState.Disconnected)
+    val errorMessage = MutableStateFlow<String?>(null)
 
     fun startConnectionLoop() {
         isRunning = true
         
         CoroutineScope(Dispatchers.IO).launch {
-            connectionState.emit(ConnectionState.Reconnecting)
-            errorMessage.emit(null)
+            connectionState.value = ConnectionState.Reconnecting
+            errorMessage.value = null
             reconnectingAttempts = 0
 
             prevTab = getActiveTabCallback()
@@ -47,8 +48,8 @@ class HttpStreamService(
             while (isRunning) {
                 val currentTab = getActiveTabCallback()
                 if (prevTab != null && currentTab != prevTab) {
-                    connectionState.emit(ConnectionState.Disconnected)
-                    errorMessage.emit("Tab has been changed")
+                    connectionState.value = ConnectionState.Disconnected
+                    errorMessage.value = "Tab has been changed"
                     reconnectingAttempts = 0
                     delay(1000L)
                     continue
@@ -96,8 +97,8 @@ class HttpStreamService(
                         val response = client.newCall(request).execute()
                         if (response.isSuccessful) {
                             // Serwer odpowiada - zmień stan na Connected
-                            connectionState.emit(ConnectionState.Connected)
-                            errorMessage.emit(null)
+                            connectionState.value = ConnectionState.Connected
+                            errorMessage.value = null
                             reconnectingAttempts = 0
                             connectionSuccessful = true
                         }
@@ -106,8 +107,8 @@ class HttpStreamService(
                     
                     if (!connectionSuccessful) {
                         if (reconnectingAttempts >= MAX_RECONNECTING_ATTEMPTS) {
-                            connectionState.emit(ConnectionState.Disconnected)
-                            errorMessage.emit("Reconnection failed after $MAX_RECONNECTING_ATTEMPTS attemps")
+                            connectionState.value = ConnectionState.Disconnected
+                            errorMessage.value = "Reconnection failed after $MAX_RECONNECTING_ATTEMPTS attemps"
                             reconnectingAttempts = 0
                         } else {
                             delay(2000L)
@@ -137,14 +138,14 @@ class HttpStreamService(
                         val response = client.newCall(request).execute()
                         if (!response.isSuccessful) {
                             // Serwer nie odpowiada poprawnie - zmień na Reconnecting
-                            connectionState.emit(ConnectionState.Reconnecting)
-                            errorMessage.emit(null)
+                            connectionState.value = ConnectionState.Reconnecting
+                            errorMessage.value = null
                         }
                         response.close()
                     } catch (_: Exception) {
                         // Błąd połączenia - zmień na Reconnecting
-                        connectionState.emit(ConnectionState.Reconnecting)
-                        errorMessage.emit(null)
+                        connectionState.value = ConnectionState.Reconnecting
+                        errorMessage.value = null
                     }
                     
                     // Sprawdzaj dostępność co 5 sekund gdy jesteśmy połączeni

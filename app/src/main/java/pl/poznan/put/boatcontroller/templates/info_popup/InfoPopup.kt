@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -46,14 +48,14 @@ enum class InfoPopupType {
 
 @Composable
 fun InfoPopup(modifier: Modifier = Modifier) {
-    val message = InfoPopupManager.message
-    val type = InfoPopupManager.type
+    val message by InfoPopupManager.message.collectAsState()
+    val type by InfoPopupManager.type.collectAsState()
 
     if (message == null || type == null) return
 
     InfoPopupContent(
-        message = message,
-        type = type,
+        message = message!!,
+        type = type!!,
         isVisible = true,
         modifier = modifier
     )

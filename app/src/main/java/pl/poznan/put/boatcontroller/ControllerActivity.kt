@@ -59,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -83,7 +84,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlin.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
@@ -200,7 +200,7 @@ class ControllerActivity: ComponentActivity() {
         val restoredTab = HttpStreamRepository.onAppResumed()
         if (restoredTab != null) {
             // Upewnij się że selectedTab jest zsynchronizowany
-            viewModel.selectedTab = restoredTab
+            viewModel.setSelectedTab(restoredTab)
         }
     }
 
@@ -224,8 +224,8 @@ class ControllerActivity: ComponentActivity() {
 
     fun sendEnginePower(viewModel: ControllerViewModel) {
         viewModel.sendSpeed(
-            viewModel.leftEnginePower,
-            viewModel.rightEnginePower
+            viewModel.leftEnginePower.value,
+            viewModel.rightEnginePower.value
         )
     }
 
@@ -247,11 +247,10 @@ class ControllerActivity: ComponentActivity() {
         val interactionSource = remember { MutableInteractionSource() }
         val isPressed by interactionSource.collectIsPressedAsState()
 
-        val primary = MaterialTheme.colorScheme.primary
-        val onSurface = MaterialTheme.colorScheme.onSecondaryContainer
-        val background = MaterialTheme.colorScheme.secondaryContainer
-        val iconAndTextColor = if (isActive || isPressed) primary else onSurface
-        val underlineColor = if (isActive || isPressed) primary else Color.LightGray
+        val secondary = MaterialTheme.colorScheme.secondary // Kolor tekstu jak w Tab'ach (PrimaryLightBlue)
+        val background = MaterialTheme.colorScheme.secondaryContainer // Tło pozostaje bez zmian
+        val iconAndTextColor = if (isActive || isPressed) secondary else Color.White
+        val underlineColor = if (isActive || isPressed) secondary else Color.LightGray
 
         Column(
             modifier = Modifier
@@ -296,7 +295,9 @@ class ControllerActivity: ComponentActivity() {
         val tabs = listOf(ControllerTab.MAP, ControllerTab.SONAR, ControllerTab.SENSORS, ControllerTab.CAMERA)
         val isTablet = isTablet(this)
         var isSyncOn by remember { mutableStateOf(false) }
-        val batteryLevel = viewModel.externalBatteryLevel.value ?: 100
+        
+        val batteryLevel by viewModel.externalBatteryLevel.collectAsState()
+        val currentBatteryLevel = batteryLevel ?: 100
         
         // Throttling dla wysyłania wiadomości - maksymalnie co 100ms
         val scope = remember { CoroutineScope(Dispatchers.Main) }
@@ -316,28 +317,36 @@ class ControllerActivity: ComponentActivity() {
         // Obsługa niskiej baterii - warning przy 20%, error przy 10%
         // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
         var lastBatteryWarning = remember { mutableStateOf<Int?>(null) }
-        LaunchedEffect(batteryLevel) {
+        LaunchedEffect(currentBatteryLevel) {
             when {
-                batteryLevel <= 10 && lastBatteryWarning.value != batteryLevel -> {
+                currentBatteryLevel <= 10 && lastBatteryWarning.value != currentBatteryLevel -> {
                     InfoPopupManager.show(
-                        message = "Krytycznie niski poziom baterii: ${batteryLevel}%",
+                        message = "Krytycznie niski poziom baterii: ${currentBatteryLevel}%",
                         type = InfoPopupType.ERROR
                     )
-                    lastBatteryWarning.value = batteryLevel
+                    lastBatteryWarning.value = currentBatteryLevel
                 }
-                batteryLevel in 11..20 && lastBatteryWarning.value != batteryLevel -> {
+                currentBatteryLevel in 11..20 && lastBatteryWarning.value != currentBatteryLevel -> {
                     InfoPopupManager.show(
-                        message = "Niski poziom baterii: ${batteryLevel}%",
+                        message = "Niski poziom baterii: ${currentBatteryLevel}%",
                         type = InfoPopupType.WARNING
                     )
-                    lastBatteryWarning.value = batteryLevel
+                    lastBatteryWarning.value = currentBatteryLevel
                 }
-                batteryLevel > 20 -> {
+                currentBatteryLevel > 20 -> {
                     // Reset gdy bateria wzrośnie powyżej 20%
                     lastBatteryWarning.value = null
                 }
             }
         }
+
+        val openPOIDialog by viewModel.openPOIDialog.collectAsState()
+        val poiId by viewModel.poiId.collectAsState()
+        val poiPositions by viewModel.poiPositions.collectAsState()
+        val leftEnginePower by viewModel.leftEnginePower.collectAsState()
+        val rightEnginePower by viewModel.rightEnginePower.collectAsState()
+        val currentSpeed by viewModel.currentSpeed.collectAsState()
+        val selectedTab by viewModel.selectedTab.collectAsState()
 
         Box(modifier = Modifier.fillMaxSize()) {
             // InfoPopup dla warningów i błędów (na górze ekranu) - tylko raz na całym activity
@@ -350,17 +359,17 @@ class ControllerActivity: ComponentActivity() {
             Row(modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)) {
-                FullScreenPopup(viewModel.openPOIDialog, { viewModel.openPOIDialog = false }, viewModel.poiId, viewModel.poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, viewModel.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, viewModel.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
-                    viewModel.openPOIDialog = false
+                FullScreenPopup(openPOIDialog, { viewModel.setOpenPOIDialog(false) }, poiId, poiPositions, { id: Int, name: String -> viewModel.updatePoiData(id, name, poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) }, { id: Int, description: String -> viewModel.updatePoiData(id, poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), description)}, { id -> viewModel.deletePoi(id)
+                    viewModel.setOpenPOIDialog(false)
                 })
 
             PowerSlider(
-                value = viewModel.leftEnginePower,
+                value = leftEnginePower,
                 onValueChange = {
-                    if(viewModel.leftEnginePower != it) {
-                        viewModel.leftEnginePower = it
+                    if(leftEnginePower != it) {
+                        viewModel.setLeftEnginePower(it)
                         if(isSyncOn) {
-                            viewModel.rightEnginePower = it
+                            viewModel.setRightEnginePower(it)
                         }
                         sendEnginePowerThrottled(viewModel)
                     }},
@@ -391,7 +400,7 @@ class ControllerActivity: ComponentActivity() {
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Text(
-                            text = viewModel.currentSpeed.toString(),
+                            text = currentSpeed.toString(),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -410,7 +419,7 @@ class ControllerActivity: ComponentActivity() {
                             isActive = isSyncOn,
                             onClick = {
                                 isSyncOn = !isSyncOn
-                                viewModel.leftEnginePower = viewModel.rightEnginePower
+                                viewModel.setLeftEnginePower(viewModel.rightEnginePower.value)
                                 sendEnginePower(viewModel)
                             }
                         )
@@ -420,8 +429,8 @@ class ControllerActivity: ComponentActivity() {
                             label = "Stop",
                             isActive = false,
                             onClick = {
-                                viewModel.rightEnginePower = 0
-                                viewModel.leftEnginePower = 0
+                                viewModel.setRightEnginePower(0)
+                                viewModel.setLeftEnginePower(0)
                                 sendEnginePower(viewModel)
                             }
                         )
@@ -441,21 +450,21 @@ class ControllerActivity: ComponentActivity() {
                             .background(MaterialTheme.colorScheme.background)
                     ) {
                         TabRow(
-                            selectedTabIndex = tabs.indexOf(viewModel.selectedTab),
+                            selectedTabIndex = tabs.indexOf(selectedTab),
                             containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = MaterialTheme.colorScheme.secondary, // Jaśniejszy niebieski dla tekstu Tab'ów
                             indicator = { tabPositions ->
                                 TabRowDefaults.SecondaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[tabs.indexOf(viewModel.selectedTab)]),
+                                    modifier = Modifier.tabIndicatorOffset(tabPositions[tabs.indexOf(selectedTab)]),
                                     color = MaterialTheme.colorScheme.secondary // Jaśniejszy niebieski dla wskaźnika
                                 )
                             }
                         ) {
                             tabs.forEach { tab ->
                                 Tab(
-                                    selected = viewModel.selectedTab == tab,
+                                    selected = selectedTab == tab,
                                     onClick = { 
-                                        viewModel.selectedTab = tab
+                                        viewModel.setSelectedTab(tab)
                                         
                                         // Informuj HttpStreamRepository o zmianie taba
                                         HttpStreamRepository.setActiveTab(tab)
@@ -463,7 +472,7 @@ class ControllerActivity: ComponentActivity() {
                                     text = { 
                                         Text(
                                             tab.displayName,
-                                            color = if (viewModel.selectedTab == tab) 
+                                            color = if (selectedTab == tab) 
                                                 MaterialTheme.colorScheme.secondary 
                                             else 
                                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -473,7 +482,7 @@ class ControllerActivity: ComponentActivity() {
                             }
                         }
 
-                        when (viewModel.selectedTab) {
+                        when (selectedTab) {
                             ControllerTab.MAP -> {MapTab(viewModel) }
                             ControllerTab.SONAR -> {SonarTab(viewModel) }
                             ControllerTab.SENSORS -> {SensorsTab(viewModel) }
@@ -485,12 +494,12 @@ class ControllerActivity: ComponentActivity() {
             }
 
             PowerSlider(
-                value = viewModel.rightEnginePower,
+                value = rightEnginePower,
                 onValueChange = {
-                    if(viewModel.rightEnginePower != it) {
-                        viewModel.rightEnginePower = it
+                    if(rightEnginePower != it) {
+                        viewModel.setRightEnginePower(it)
                         if(isSyncOn) {
-                            viewModel.leftEnginePower = it
+                            viewModel.setLeftEnginePower(it)
                         }
                         sendEnginePowerThrottled(viewModel)
                     }},
@@ -651,13 +660,15 @@ class ControllerActivity: ComponentActivity() {
     @SuppressLint("MissingPermission", "InflateParams", "UseKtx")
     @Composable
     fun MapTab(viewModel: ControllerViewModel, modifier: Modifier = Modifier) {
-        val map = viewModel.mapLibreMapState.value
+        val map by viewModel.mapLibreMapState.collectAsState()
         val context = LocalContext.current
-        val waypoints = viewModel.waypointPositions.toList()
-        val poi = viewModel.poiPositions.toList()
-        val layersMode = viewModel.layersMode.value
-        val homePosition = viewModel.homePosition
-        val phonePosition = viewModel.phonePosition.value
+        val waypoints by viewModel.waypointPositions.collectAsState()
+        val poi by viewModel.poiPositions.collectAsState()
+        val layersMode by viewModel.layersMode.collectAsState()
+        val homePosition by viewModel.homePosition.collectAsState()
+        val phonePosition by viewModel.phonePosition.collectAsState()
+        val shipPosition by viewModel.shipPosition.collectAsState()
+        val cameraPosition by viewModel.cameraPosition.collectAsState()
         val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
         val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
 
@@ -698,7 +709,7 @@ class ControllerActivity: ComponentActivity() {
             style.getSourceAs<GeoJsonSource>("phone-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(listOf(phoneFeature)))
 
-            val saved = viewModel.cameraPosition.value
+            val saved = cameraPosition
 
             val targetLat = saved?.lat ?: pos[0]
             val targetLng = saved?.lon ?: pos[1]
@@ -712,7 +723,7 @@ class ControllerActivity: ComponentActivity() {
             )
         }
 
-        LaunchedEffect(waypoints.toList()) {
+        LaunchedEffect(waypoints) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
@@ -737,7 +748,7 @@ class ControllerActivity: ComponentActivity() {
         }
         
         // Osobny LaunchedEffect dla pozycji łódki - aktualizuje się tylko gdy pozycja się zmienia
-        LaunchedEffect(viewModel.shipPosition.value) {
+        LaunchedEffect(shipPosition) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
             
@@ -778,8 +789,8 @@ class ControllerActivity: ComponentActivity() {
             val style = mapboxMap.style ?: return@LaunchedEffect
             val homeSource = style.getSourceAs<GeoJsonSource>("home-source")
 
-            val lat = viewModel.homePosition.value.lat
-            val lon = viewModel.homePosition.value.lon
+            val lat = homePosition.lat
+            val lon = homePosition.lon
 
             if (lat == 0.0 && lon == 0.0) {
                 homeSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
@@ -816,7 +827,7 @@ class ControllerActivity: ComponentActivity() {
                                             "type": "Feature",
                                             "geometry": {
                                               "type": "Point",
-                                              "coordinates": [${viewModel.shipPosition.value.lon}, ${viewModel.shipPosition.value.lat}]
+                                              "coordinates": [${shipPosition.lon}, ${shipPosition.lat}]
                                             },
                                             "properties": {
                                               "title": "Ship"
@@ -871,8 +882,8 @@ class ControllerActivity: ComponentActivity() {
                                         val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
                                         if (id != null) {
                                             Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
-                                            viewModel.poiId = viewModel.poiPositions.indexOfFirst { it.id == id }
-                                            viewModel.openPOIDialog = true
+                                            viewModel.setPoiId(viewModel.poiPositions.value.indexOfFirst { it.id == id })
+                                            viewModel.setOpenPOIDialog(true)
                                         }
                                         true
                                     } else {
@@ -881,7 +892,7 @@ class ControllerActivity: ComponentActivity() {
                                 }
                                 updateMapFeatures(style)
                             }
-                            viewModel.mapLibreMapState.value = mapboxMap
+                            viewModel.setMapReady(mapboxMap)
                         }
                     }
                 },
@@ -892,8 +903,9 @@ class ControllerActivity: ComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
             ) {
+                val battery by viewModel.externalBatteryLevel.collectAsState()
                 BatteryIndicator(
-                    level = viewModel.externalBatteryLevel.value ?: 0,
+                    level = battery ?: 0,
                     isCharging = true,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -902,13 +914,12 @@ class ControllerActivity: ComponentActivity() {
 
                 FloatingActionButton(
                     onClick = {
-                        val shipPosition = viewModel.shipPosition
                         val zoom = 16.0
                         map?.animateCamera(
                             CameraUpdateFactory.newLatLngZoom(
                                 LatLng(
-                                    shipPosition.value.lat,
-                                    shipPosition.value.lon
+                                    shipPosition.lat,
+                                    shipPosition.lon
                                 ), zoom
                             ),
                             cameraZoomAnimationTime * 1000
@@ -939,7 +950,7 @@ class ControllerActivity: ComponentActivity() {
                         .clip(CircleShape),
                     containerColor = VisibilityButtonColor
                 ) {
-                    when (viewModel.layersMode.value) {
+                    when (layersMode) {
                         MapLayersVisibilityMode.BOTH_VISIBLE -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_compass), "Waypoints visible")
                         MapLayersVisibilityMode.WAYPOINTS -> MapLayerVisibilityIcon(painterResource(id = R.drawable.ic_indication_star), "POI visible")
                         MapLayersVisibilityMode.POI -> Icon(Icons.Default.VisibilityOff, tint = Color.White, contentDescription = "None visible")
@@ -998,6 +1009,8 @@ class ControllerActivity: ComponentActivity() {
         var isIndicatorVisible by remember { mutableStateOf(false) }
         var hideJob by remember { mutableStateOf<Job?>(null) }
         val scope = rememberCoroutineScope()
+        val connectionState by viewModel.httpConnectionState.collectAsState()
+        val errorMessage by viewModel.httpErrorMessage.collectAsState()
         
         // Funkcja do pokazania wskaźnika na ~3 sekundy
         fun showIndicator() {
@@ -1022,8 +1035,8 @@ class ControllerActivity: ComponentActivity() {
         Box(modifier = modifier.fillMaxSize()) {
             HttpStreamView(
                 streamUrl = HttpStreamRepository.getUrlForTab(tab),
-                connectionState = viewModel.httpConnectionState,
-                errorMessage = viewModel.httpErrorMessage,
+                connectionState = connectionState,
+                errorMessage = errorMessage,
                 label = label,
                 config = config,
                 onTap = {
@@ -1035,22 +1048,24 @@ class ControllerActivity: ComponentActivity() {
             
             // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
             ConnectionStatusIndicator(
-                connectionState = viewModel.httpConnectionState,
-                errorMessage = viewModel.httpErrorMessage,
+                connectionState = connectionState,
+                errorMessage = errorMessage,
                 isVisible = isIndicatorVisible,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
             )
 
-            // Przycisk zapisu POI
-            SavePOIButton(
-                viewModel = viewModel,
-                connectionState = viewModel.httpConnectionState,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
-            )
+            // Przycisk zapisu POI - widoczny TYLKO gdy połączono
+            if (connectionState == ConnectionState.Connected) {
+                SavePOIButton(
+                    viewModel = viewModel,
+                    connectionState = connectionState,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                )
+            }
         }
     }
 
@@ -1067,7 +1082,7 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun SensorsTab(viewModel: ControllerViewModel) {
-        val data = viewModel.sensorsData
+        val data by viewModel.sensorsData.collectAsState()
 
         Box(
             modifier = Modifier
@@ -1178,7 +1193,7 @@ class ControllerActivity: ComponentActivity() {
 
     @Composable
     fun CameraTab(viewModel: ControllerViewModel) {
-        val winchState = viewModel.winchState
+        val winchState by viewModel.winchState.collectAsState()
         
         Row(modifier = Modifier.fillMaxSize()) {
             // Widok kamery - 85% szerokości
@@ -1309,8 +1324,8 @@ class ControllerActivity: ComponentActivity() {
         style.addImage("home-icon", homeBitmap)
         style.addImage("poi-icon", poiBitmap)
 
-        viewModel.waypointPositions.forEach { wp ->
-            val bitmap = viewModel.waypointBitmaps[wp.no]
+        viewModel.waypointPositions.value.forEach { wp ->
+            val bitmap = viewModel.waypointBitmaps.value[wp.no]
                 ?: getOrCreateWaypointBitmap(wp.no, context)
             addWaypointBitmapToStyle(wp.no, bitmap, style)
         }
@@ -1332,7 +1347,7 @@ class ControllerActivity: ComponentActivity() {
     }
 
     fun getOrCreateWaypointBitmap(no: Int, context: Context): Bitmap {
-        viewModel.waypointBitmaps[no]?.let { return it }
+        viewModel.waypointBitmaps.value[no]?.let { return it }
 
         val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
         val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)

@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
@@ -25,7 +26,7 @@ class SocketService {
     private val writeMutex = Mutex()
     private var isRunning = false
     val incomingRaw = MutableSharedFlow<String>(extraBufferCapacity = 20)
-    val connectionState = MutableSharedFlow<Boolean>(replay = 1)
+    val connectionState = MutableStateFlow(false)
 
     fun startConnectionLoop(ip: String, port: Int) {
         isRunning = true
@@ -34,7 +35,7 @@ class SocketService {
                 try {
                     connect(ip, port)
                 } catch (e: Exception) {
-                    connectionState.emit(false)
+                    connectionState.value = false
                     Log.w("SocketService", "⚠️ Connection lost, retrying in 3s...", e)
                     delay(3000)
                 }
@@ -50,7 +51,7 @@ class SocketService {
             writer = BufferedWriter(OutputStreamWriter(socket!!.getOutputStream()))
             reader = BufferedReader(InputStreamReader(socket!!.getInputStream()))
 
-            connectionState.emit(true)
+            connectionState.value = true
             Log.d("SocketService", "✅ Connected to $ip:$port")
 
             // Pętla czytania - blokuje dopóki połączenie jest aktywne

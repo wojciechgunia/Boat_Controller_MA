@@ -19,6 +19,9 @@ import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+
 /**
  * Przycisk do zapisu POI z obrazem z kamery lub sonaru.
  * 
@@ -36,47 +39,45 @@ fun SavePOIButton(
     name: String? = null,
     description: String? = null
 ) {
-    FloatingActionButton(
-        onClick = {
-            // Sprawdź czy połączenie jest aktywne
-            if (connectionState != ConnectionState.Connected) {
-                InfoPopupManager.show(
-                    message = "Nie można zapisać POI. Stream nie jest aktywny (stan: ${connectionState.name}).",
-                    type = InfoPopupType.ERROR
-                )
-                return@FloatingActionButton
-            }
-            
-            // Przechwytuj bitmapę z WebView
-            val bitmap = HttpStreamRepository.captureWebViewBitmap()
-            
-            if (bitmap != null) {
-                // Wywołaj funkcję zapisu POI z obrazem
-                viewModel.createPoiWithImage(
-                    bitmap = bitmap,
-                    name = name,
-                    description = description
-                )
-            } else {
-                // Jeśli nie udało się przechwycić bitmapy, pokaż komunikat błędu
-                InfoPopupManager.show(
-                    message = "Nie można przechwycić obrazu. Upewnij się, że stream jest aktywny.",
-                    type = InfoPopupType.ERROR
-                )
-            }
-        },
-        shape = CircleShape,
-        modifier = modifier
-            .shadow(16.dp, CircleShape, clip = false)
-            .clip(CircleShape),
-        containerColor = MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
-    ) {
-        Icon(
-            painter = painterResource(id = R.drawable.save),
-            contentDescription = "Save POI",
-            tint = Color.White,
-            modifier = Modifier.size(20.dp)
-        )
+    // Obserwuj czy WebView jest gotowy do interakcji
+    val isWebViewReady by HttpStreamRepository.isWebViewReady.collectAsState()
+    
+    // Przycisk widoczny tylko gdy mamy połączenie i WebView jest gotowy
+    if (connectionState == ConnectionState.Connected && isWebViewReady) {
+        FloatingActionButton(
+            onClick = {
+                // Synchroniczne przechwytywanie bitmapy (uproszczone, bez PixelCopy)
+                // Dzięki temu nie przechwytujemy elementów interfejsu (przycisków, wskaźników stanu)
+                val bitmap = HttpStreamRepository.captureWebViewBitmap()
+                
+                if (bitmap != null) {
+                    // Wywołaj funkcję zapisu POI z obrazem
+                    viewModel.createPoiWithImage(
+                        bitmap = bitmap,
+                        name = name,
+                        description = description
+                    )
+                } else {
+                    // Jeśli nie udało się przechwycić bitmapy
+                    InfoPopupManager.show(
+                        message = "Nie można przechwycić obrazu. Upewnij się, że stream jest w pełni załadowany.",
+                        type = InfoPopupType.ERROR
+                    )
+                }
+            },
+            shape = CircleShape,
+            modifier = modifier
+                .shadow(16.dp, CircleShape, clip = false)
+                .clip(CircleShape),
+            containerColor = MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.save),
+                contentDescription = "Save POI",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 

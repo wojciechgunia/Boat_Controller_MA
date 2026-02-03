@@ -4,20 +4,17 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.geojson.Feature
@@ -28,8 +25,8 @@ import pl.poznan.put.boatcontroller.api.ApiClient
 import pl.poznan.put.boatcontroller.api.ApiService
 import pl.poznan.put.boatcontroller.dataclass.CameraPositionState
 import pl.poznan.put.boatcontroller.dataclass.HomePosition
-import pl.poznan.put.boatcontroller.dataclass.POIObject
 import pl.poznan.put.boatcontroller.dataclass.POICreateRequest
+import pl.poznan.put.boatcontroller.dataclass.POIObject
 import pl.poznan.put.boatcontroller.dataclass.POIUpdateRequest
 import pl.poznan.put.boatcontroller.dataclass.ShipPosition
 import pl.poznan.put.boatcontroller.dataclass.ShipSensorsData
@@ -37,35 +34,45 @@ import pl.poznan.put.boatcontroller.dataclass.WaypointObject
 import pl.poznan.put.boatcontroller.enums.ControllerTab
 import pl.poznan.put.boatcontroller.enums.MapLayersVisibilityMode
 import pl.poznan.put.boatcontroller.mappers.toDomain
-import java.util.concurrent.atomic.AtomicInteger
+import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
+import pl.poznan.put.boatcontroller.socket.SocketCommand
 import pl.poznan.put.boatcontroller.socket.SocketEvent
 import pl.poznan.put.boatcontroller.socket.SocketRepository
-import pl.poznan.put.boatcontroller.socket.SocketCommand
-import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
+import kotlin.math.cos
 
 class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private var backendApi: ApiService? = null
     private val repo = Repository(app.applicationContext)
     private val seq = AtomicInteger(0)
-    var missionId by mutableIntStateOf(-1)
-        private set
 
-    var openPOIDialog by mutableStateOf(false)
-    var poiId by mutableIntStateOf(-1)
+    private val _missionId = MutableStateFlow(-1)
+    val missionId = _missionId.asStateFlow()
+
+    private val _openPOIDialog = MutableStateFlow(false)
+    val openPOIDialog = _openPOIDialog.asStateFlow()
+
+    private val _poiId = MutableStateFlow(-1)
+    val poiId = _poiId.asStateFlow()
 
     // Silniki drona (lewy + prawy), zakres od -80..80 (mapowane do LoRa na zakres 0..100)
-    var leftEnginePower by mutableIntStateOf(0)
-    var rightEnginePower by mutableIntStateOf(0)
+    private val _leftEnginePower = MutableStateFlow(0)
+    val leftEnginePower = _leftEnginePower.asStateFlow()
+
+    private val _rightEnginePower = MutableStateFlow(0)
+    val rightEnginePower = _rightEnginePower.asStateFlow()
+
     // Stan silnika zwijarki: 2 = góra (up), 1 = wyłączony (stop), 0 = dół (down)
-    var winchState by mutableIntStateOf(1) // Domyślnie wyłączony
-    var currentSpeed by mutableFloatStateOf(0.0f)
-        private set
+    private val _winchState = MutableStateFlow(1) // Domyślnie wyłączony
+    val winchState = _winchState.asStateFlow()
+
+    private val _currentSpeed = MutableStateFlow(0.0f)
+    val currentSpeed = _currentSpeed.asStateFlow()
+
     // Mechanizm wysyłania SS z burst + keep-alive (optymalizacja LoRa)
     private var currentSpeedSendJob: Job? = null
     private var keepAliveJob: Job? = null
@@ -74,65 +81,76 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private val ssKeepAliveIntervalMs = 2500L // Keep-alive co 2-3s
 
     // Ostatnie wysłane wartości (dla keep-alive)
-    private var lastSentLeft = leftEnginePower
-    private var lastSentRight = rightEnginePower
-    private var lastSentWinch = winchState
+    private var lastSentLeft = _leftEnginePower.value
+    private var lastSentRight = _rightEnginePower.value
+    private var lastSentWinch = _winchState.value
 
-    var selectedTab by mutableStateOf(ControllerTab.MAP)
+    private val _selectedTab = MutableStateFlow(ControllerTab.MAP)
+    val selectedTab = _selectedTab.asStateFlow()
 
-    private val _mapLibreMapState = mutableStateOf<MapLibreMap?>(null)
-    val mapLibreMapState: MutableState<MapLibreMap?> = _mapLibreMapState
+    private val _mapLibreMapState = MutableStateFlow<MapLibreMap?>(null)
+    val mapLibreMapState = _mapLibreMapState.asStateFlow()
 
-    private val _phonePosition = mutableStateOf<DoubleArray?>(null)
-    val phonePosition: MutableState<DoubleArray?> = _phonePosition
+    private val _phonePosition = MutableStateFlow<DoubleArray?>(null)
+    val phonePosition = _phonePosition.asStateFlow()
 
-    private val _homePosition = mutableStateOf<HomePosition>(HomePosition(0.0, 0.0))
-    val homePosition: MutableState<HomePosition> = _homePosition
+    private val _homePosition = MutableStateFlow(HomePosition(0.0, 0.0))
+    val homePosition = _homePosition.asStateFlow()
 
-    private val _shipPosition = mutableStateOf<ShipPosition>(ShipPosition(52.404633, 16.957722))
-    var shipPosition: MutableState<ShipPosition> = _shipPosition
+    private val _shipPosition = MutableStateFlow(ShipPosition(52.404633, 16.957722))
+    val shipPosition = _shipPosition.asStateFlow()
 
-    private var _waypointPositions = mutableStateListOf<WaypointObject>()
-    var waypointPositions: SnapshotStateList<WaypointObject> = _waypointPositions
+    private val _waypointPositions = MutableStateFlow<List<WaypointObject>>(emptyList())
+    val waypointPositions = _waypointPositions.asStateFlow()
 
-    private var _poiPositions = mutableStateListOf<POIObject>()
-    var poiPositions: SnapshotStateList<POIObject> = _poiPositions
+    private val _poiPositions = MutableStateFlow<List<POIObject>>(emptyList())
+    val poiPositions = _poiPositions.asStateFlow()
 
-    private val _waypointBitmaps = mutableStateMapOf<Int, Bitmap>()
-    val waypointBitmaps: Map<Int, Bitmap> = _waypointBitmaps
+    private val _waypointBitmaps = MutableStateFlow<Map<Int, Bitmap>>(emptyMap())
+    val waypointBitmaps = _waypointBitmaps.asStateFlow()
 
-    private val _cameraPosition = mutableStateOf<CameraPositionState?>(null)
-    val cameraPosition: MutableState<CameraPositionState?> = _cameraPosition
+    private val _cameraPosition = MutableStateFlow<CameraPositionState?>(null)
+    val cameraPosition = _cameraPosition.asStateFlow()
 
-    private val _layersMode = mutableStateOf(MapLayersVisibilityMode.BOTH_VISIBLE)
-    val layersMode: MutableState<MapLayersVisibilityMode> = _layersMode
+    private val _layersMode = MutableStateFlow(MapLayersVisibilityMode.BOTH_VISIBLE)
+    val layersMode = _layersMode.asStateFlow()
 
     // Używamy wspólnego stanu baterii z SocketRepository
-    val externalBatteryLevel: MutableState<Int?> = mutableStateOf(SocketRepository.batteryLevel.value)
+    private val _externalBatteryLevel = MutableStateFlow<Int?>(SocketRepository.batteryLevel.value)
+    val externalBatteryLevel = _externalBatteryLevel.asStateFlow()
 
-    var sensorsData by mutableStateOf(ShipSensorsData())
-        private set
+    private val _sensorsData = MutableStateFlow(ShipSensorsData())
+    val sensorsData = _sensorsData.asStateFlow()
 
     // ===================== HTTP Streams – konfiguracja =====================
     // Jeden stan połączenia dla aktywnego streamu
-    var httpConnectionState by mutableStateOf<ConnectionState>(ConnectionState.Disconnected)
-        private set
-    var httpErrorMessage by mutableStateOf<String?>(null)
-        private set
+    private val _httpConnectionState = MutableStateFlow(ConnectionState.Disconnected)
+    val httpConnectionState = _httpConnectionState.asStateFlow()
+
+    private val _httpErrorMessage = MutableStateFlow<String?>(null)
+    val httpErrorMessage = _httpErrorMessage.asStateFlow()
 
     init {
         // Obserwuj zmiany baterii z SocketRepository
         viewModelScope.launch {
-            SocketRepository.batteryLevel.collectLatest { level ->
-                externalBatteryLevel.value = level
+            SocketRepository.batteryLevel.collect { level ->
+                _externalBatteryLevel.value = level
             }
         }
     }
 
+    // Setters
+    fun setMissionId(id: Int) { _missionId.value = id }
+    fun setOpenPOIDialog(open: Boolean) { _openPOIDialog.value = open }
+    fun setPoiId(id: Int) { _poiId.value = id }
+    fun setLeftEnginePower(power: Int) { _leftEnginePower.value = power }
+    fun setRightEnginePower(power: Int) { _rightEnginePower.value = power }
+    fun setSelectedTab(tab: ControllerTab) { _selectedTab.value = tab }
+
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
-        currentSpeed = speed
-        println("Ship position: $shipPosition")
+        _currentSpeed.value = speed
+        println("Ship position: ${shipPosition.value}")
     }
 
     fun updateHomePosition(homePosition: HomePosition) {
@@ -141,25 +159,24 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateSensorsData(sensorsData: ShipSensorsData) {
-        this.sensorsData = sensorsData
+        _sensorsData.value = sensorsData
         println("Sensors data: $sensorsData")
     }
 
     fun initModel() {
         viewModelScope.launch {
             try {
-                Log.d("Get Mission Id", missionId.toString())
+                Log.d("Get Mission Id", missionId.value.toString())
                 backendApi = ApiClient.create(getApplication())
                 loadMission()
                 backendApi?.let { api ->
-                    val response = api.getWaypointsList(missionId)
+                    val response = api.getWaypointsList(missionId.value)
                     if (response.isSuccessful) {
                         val list = response.body()!!.map { it.toDomain() }
                         if (list.isNotEmpty()) {
-                            _waypointPositions.clear()
-                            _waypointPositions.addAll(list)
+                            _waypointPositions.value = list
                         }
-                        Log.d("Way", _waypointPositions.toString())
+                        Log.d("Way", _waypointPositions.value.toString())
                     } else {
                         Log.e("API", "Błąd pobierania waypoints")
                     }
@@ -174,12 +191,11 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMission() {
         viewModelScope.launch {
             backendApi?.let { api ->
-                val response = api.getPoiList(missionId)
+                val response = api.getPoiList(missionId.value)
                 if (response.isSuccessful) {
                     val poiList = response.body()!!.map { it.toDomain() }
-                    _poiPositions.clear()
-                    _poiPositions.addAll(poiList)
-                    Log.d("POI", _poiPositions.toString())
+                    _poiPositions.value = poiList
+                    Log.d("POI", _poiPositions.value.toString())
                 }
             }
         }
@@ -194,13 +210,13 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     
     private fun observeHttpStreamConnections() {
         viewModelScope.launch {
-            HttpStreamRepository.connectionState.collectLatest { state ->
-                httpConnectionState = state
+            HttpStreamRepository.connectionState.collect { state ->
+                _httpConnectionState.value = state
             }
         }
         viewModelScope.launch {
-            HttpStreamRepository.errorMessage.collectLatest { error ->
-                httpErrorMessage = error
+            HttpStreamRepository.errorMessage.collect { error ->
+                _httpErrorMessage.value = error
             }
         }
     }
@@ -209,8 +225,8 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 repo.get().collect { userData ->
-                    if (userData.selectedMissionId != -1 && missionId == -1) {
-                        missionId = userData.selectedMissionId
+                    if (userData.selectedMissionId != -1 && missionId.value == -1) {
+                        _missionId.value = userData.selectedMissionId
                         initModel()
                     }
                 }
@@ -282,7 +298,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun observeSocketConnection() {
         viewModelScope.launch {
-            SocketRepository.connectionState.collectLatest { connected ->
+            SocketRepository.connectionState.collect { connected ->
                 if (connected) {
                     // Wysyłamy tryb manual przy połączeniu
                     sendAction("SM", "manual")
@@ -293,9 +309,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                     // Używamy sendSpeedWithInterval aby wysłać z interwałem
                     Log.d(
                         "ControllerViewModel",
-                        "Socket connected – resending current speed L=$leftEnginePower R=$rightEnginePower"
+                        "Socket connected – resending current speed L=${leftEnginePower.value} R=${rightEnginePower.value}"
                     )
-                    sendSpeedWithInterval(leftEnginePower, rightEnginePower, winchState)
+                    sendSpeedWithInterval(leftEnginePower.value, rightEnginePower.value, winchState.value)
                 }
             }
         }
@@ -383,10 +399,10 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendSpeed(left: Int, right: Int) {
         viewModelScope.launch {
-            currentSpeed = ((left + right) / 2.0).toFloat()
-            Log.d("ControllerViewModel", "🚢 sendSpeed called: left=$left, right=$right, winch=$winchState")
+            _currentSpeed.value = ((left + right) / 2.0).toFloat()
+            Log.d("ControllerViewModel", "🚢 sendSpeed called: left=$left, right=$right, winch=${winchState.value}")
             // Wyślij z interwałem
-            sendSpeedWithInterval(left, right, winchState)
+            sendSpeedWithInterval(left, right, winchState.value)
         }
     }
 
@@ -401,10 +417,10 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
      * @param newState 2 = góra (up), 1 = wyłączony (stop), 1 = dół (down)
      */
     fun updateWinchState(newState: Int) {
-        if (winchState != newState) {
-            winchState = newState
+        if (_winchState.value != newState) {
+            _winchState.value = newState
             // Wyślij SS z aktualnymi wartościami silników i nowym stanem zwijarki
-            sendSpeed(leftEnginePower, rightEnginePower)
+            sendSpeed(leftEnginePower.value, rightEnginePower.value)
         }
     }
 
@@ -435,7 +451,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getWaypointsFeature(): List<Feature> {
-        return _waypointPositions.map {
+        return _waypointPositions.value.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("no", it.no.toString())
                 addStringProperty("icon", "waypoint-icon-${it.no}")
@@ -444,8 +460,8 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getPoiFeature(): List<Feature> {
-        Log.d("POI", _poiPositions.toString())
-        return _poiPositions.map {
+        Log.d("POI", _poiPositions.value.toString())
+        return _poiPositions.value.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())
                 addStringProperty("icon", "poi-icon")
@@ -471,7 +487,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun getConnectionLinesFeature(): List<Feature> {
         val lines = mutableListOf<Feature>()
-        val waypoints = _waypointPositions.sortedBy { it.no }
+        val waypoints = _waypointPositions.value.sortedBy { it.no }
 
         for (i in 0 until waypoints.size - 1) {
             val start = waypoints[i]
@@ -489,7 +505,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setWaypointBitmap(id: Int, bitmap: Bitmap) {
-        _waypointBitmaps[id] = bitmap
+        _waypointBitmaps.update { it + (id to bitmap) }
     }
 
     fun setPhonePosition(lat: Double, lon: Double) {
@@ -555,9 +571,9 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         // Przybliżone obliczenie odległości w metrach (Haversine formula uproszczona dla małych odległości)
         // 1 stopień ≈ 111 km
         val latDiff = radiusMeters / 111000.0
-        val lonDiff = radiusMeters / (111000.0 * kotlin.math.cos(Math.toRadians(lat)))
+        val lonDiff = radiusMeters / (111000.0 * cos(Math.toRadians(lat)))
         
-        return _poiPositions.firstOrNull { poi ->
+        return _poiPositions.value.firstOrNull { poi ->
             val latDistance = abs(poi.lat - lat)
             val lonDistance = abs(poi.lon - lon)
             latDistance <= latDiff && lonDistance <= lonDiff
@@ -587,7 +603,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         
-        if (missionId == -1) {
+        if (missionId.value == -1) {
             Log.e("ControllerViewModel", "❌ Mission ID is -1, cannot create POI")
             InfoPopupManager.show(
                 message = "Brak wybranej misji. Wybierz misję przed zapisem POI.",
@@ -709,7 +725,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         
         // Utwórz request
         val request = POICreateRequest(
-            missionId = missionId,
+            missionId = missionId.value,
             lat = lat.toString(),
             lon = lon.toString(),
             name = name,

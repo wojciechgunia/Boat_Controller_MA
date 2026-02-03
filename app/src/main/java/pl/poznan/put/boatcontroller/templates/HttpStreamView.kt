@@ -32,7 +32,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -120,8 +119,8 @@ fun HttpStreamView(
             val currentWebView = webViewRef
             webViewRef = null // Ustaw null natychmiast, aby uniknąć wielokrotnych wywołań
             safeDestroyWebView(currentWebView)
-            // Wyrejestruj WebView w repozytorium
-            HttpStreamRepository.registerWebView(null, null)
+            // Wyrejestruj WebView w repozytorium (używając bezpiecznej metody)
+            HttpStreamRepository.unregisterWebView(currentWebView)
         }
         
         onDispose {
@@ -132,9 +131,9 @@ fun HttpStreamView(
             webViewRef = null // Ustaw null natychmiast
             if (currentWebView != null) {
                 safeDestroyWebView(currentWebView)
+                // Wyrejestruj WebView w repozytorium (używając bezpiecznej metody)
+                HttpStreamRepository.unregisterWebView(currentWebView)
             }
-            // Wyrejestruj WebView w repozytorium
-            HttpStreamRepository.registerWebView(null, null)
         }
     }
 
@@ -428,7 +427,7 @@ fun HttpStreamView(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = errorMessage ?: "Connection with $label failed",
+                            text = errorMessage ?: "Reconnection failed after 3 attempts",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,

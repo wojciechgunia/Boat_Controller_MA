@@ -3,12 +3,14 @@ package pl.poznan.put.boatcontroller.socket
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.util.Log
+import android.view.View
 import android.webkit.WebView
 import java.lang.ref.WeakReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import pl.poznan.put.boatcontroller.ConnectionState
@@ -28,14 +30,22 @@ object HttpStreamRepository {
 
     private var activeWebViewRef: WeakReference<WebView>? = null
     private var activeConfig: HttpStreamConfig? = null
+    
+    // Nowa flaga informująca czy WebView jest gotowy do interakcji (nie null)
+    private val _isWebViewReady = MutableStateFlow(false)
+    val isWebViewReady = _isWebViewReady.asStateFlow()
 
     private val activeWebView: WebView?
         get() = activeWebViewRef?.get()
     private var requestCount = 0
     private var lastRequestTime = 0L
 
-    val connectionState = MutableSharedFlow<ConnectionState>(replay = 1)
-    val errorMessage = MutableSharedFlow<String?>(replay = 1)
+    private val _connectionState = MutableStateFlow(ConnectionState.Disconnected)
+    val connectionState = _connectionState.asStateFlow()
+    
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage = _errorMessage.asStateFlow()
+    
     private var isObservingConnection = false
     
 //    init {
@@ -96,6 +106,26 @@ object HttpStreamRepository {
     fun registerWebView(webView: WebView?, config: HttpStreamConfig?) {
         activeWebViewRef = webView?.let { WeakReference(it) }
         activeConfig = config
+        // Aktualizuj stan gotowości WebView
+        _isWebViewReady.value = webView != null
+    }
+
+    /**
+     * Bezpieczne wyrejestrowanie WebView.
+     * Czyści referencję TYLKO jeśli przekazany webView to ten aktualnie aktywny.
+     * Zapobiega sytuacji, gdzie stary WebView (przy zmianie taba) czyści referencję do nowego.
+     */
+    fun unregisterWebView(webView: WebView?) {
+        val current = activeWebViewRef?.get()
+        if (current == webView || webView == null) {
+            // Jeśli to ten sam WebView (lub null), czyścimy
+            activeWebViewRef = null
+            activeConfig = null
+            _isWebViewReady.value = false
+        } else {
+            // Jeśli to inny WebView (np. stary, a już mamy nowy), ignorujemy
+            Log.d("HttpStreamRepository", "Ignoring unregister for inactive WebView")
+        }
     }
 
     fun registerRequest() {
@@ -120,6 +150,7 @@ object HttpStreamRepository {
         activeWebViewRef = null
         activeConfig = null
         requestCount = 0
+        _isWebViewReady.value = false
         
         webView?.let { view ->
             try {
@@ -186,16 +217,16 @@ object HttpStreamRepository {
      * Zmienia stan na Reconnecting - używane gdy wykrywamy utratę połączenia.
      */
     fun setReconnecting() {
-        connectionState.tryEmit(ConnectionState.Reconnecting)
-        errorMessage.tryEmit(null)
+        _connectionState.value = ConnectionState.Reconnecting
+        _errorMessage.value = null
     }
     
     /**
      * Zmienia stan na Connected - używane gdy WebView pomyślnie załadował stream.
      */
     fun setConnected() {
-        connectionState.tryEmit(ConnectionState.Connected)
-        errorMessage.tryEmit(null)
+        _connectionState.value = ConnectionState.Connected
+        _errorMessage.value = null
     }
     
     /**
@@ -204,8 +235,8 @@ object HttpStreamRepository {
     fun forceReconnect(tab: ControllerTab) {
         destroyWebView()
         // Resetuj stan połączenia - rozpocznij próbę połączenia
-        connectionState.tryEmit(ConnectionState.Reconnecting)
-        errorMessage.tryEmit(null)
+        _connectionState.value = ConnectionState.Reconnecting
+        _errorMessage.value = null
         // Resetuj czas ostatniego requestu
         lastRequestTime = 0L
         
@@ -243,12 +274,12 @@ object HttpStreamRepository {
         isObservingConnection = true
         CoroutineScope(Dispatchers.IO).launch {
             streamService?.connectionState?.collectLatest { state ->
-                connectionState.emit(state)
+                _connectionState.value = state
             }
         }
         CoroutineScope(Dispatchers.IO).launch {
             streamService?.errorMessage?.collectLatest { error ->
-                errorMessage.emit(error)
+                _errorMessage.value = error
             }
         }
     }
@@ -262,23 +293,47 @@ object HttpStreamRepository {
     
     /**
      * Przechwytuje bitmapę z aktywnego WebView.
-     * @return Bitmapa z WebView lub null jeśli WebView nie istnieje lub nie jest widoczne
+     * Używa bezpośredniego rysowania na Canvas (z wymuszeniem LAYER_TYPE_SOFTWARE),
+     * co pozwala na przechwycenie zawartości bez elementów nakładkowych interfejsu.
+     * 
+     * @return Bitmapa z WebView lub null jeśli WebView nie istnieje lub wystąpił błąd
      */
     fun captureWebViewBitmap(): Bitmap? {
         val webView = activeWebView ?: return null
         
-        return try {
-            if (webView.width <= 0 || webView.height <= 0) {
-                Log.w("HttpStreamRepository", "WebView has invalid size: ${webView.width}x${webView.height}")
-                return null
-            }
+        if (webView.width <= 0 || webView.height <= 0) {
+            Log.w("HttpStreamRepository", "WebView has invalid size: ${webView.width}x${webView.height}")
+            return null
+        }
 
+        return try {
             val bitmap = createBitmap(webView.width, webView.height)
             val canvas = Canvas(bitmap)
-
-            webView.draw(canvas)
             
-            Log.d("HttpStreamRepository", "✅ Captured bitmap: ${bitmap.width}x${bitmap.height}")
+            // Wymuszamy renderowanie programowe (software) na czas rysowania
+            // To pomaga przechwycić zawartość hardware-accelerated i zapewnia spójne rysowanie
+            val originalLayerType = webView.layerType
+            
+            try {
+                // Przełącz na renderowanie programowe
+                webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                
+                // Rysuj tło
+                val bg = webView.background
+                if (bg != null) {
+                    bg.draw(canvas)
+                } else {
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                }
+                
+                // Rysuj zawartość
+                webView.draw(canvas)
+            } finally {
+                // Przywróć oryginalny typ warstwy
+                webView.setLayerType(originalLayerType, null)
+            }
+            
+            Log.d("HttpStreamRepository", "✅ Captured bitmap using direct draw: ${bitmap.width}x${bitmap.height}")
             bitmap
         } catch (e: Exception) {
             Log.e("HttpStreamRepository", "❌ Error capturing bitmap from WebView", e)

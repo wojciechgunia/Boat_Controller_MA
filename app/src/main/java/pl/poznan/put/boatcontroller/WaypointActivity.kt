@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -166,6 +167,10 @@ class WaypointActivity : ComponentActivity() {
         waypointVm: WaypointViewModel,
     ) {
         val density = LocalDensity.current
+        val isToolbarOpened by waypointVm.isToolbarOpened.collectAsState()
+        val mapMode by waypointVm.mapMode.collectAsState()
+        val isShipMoving by waypointVm.isShipMoving.collectAsState()
+        val currentShipDirection by waypointVm.currentShipDirection.collectAsState()
 
         val screenWidth = LocalWindowInfo.current.containerSize.width
         val screenWidthDp = with(density) { screenWidth.toDp() }
@@ -176,10 +181,10 @@ class WaypointActivity : ComponentActivity() {
         val arrowBoxWidth = screenWidthDp * 0.05f
         val arrowBoxHeight = screenHeightDp * 0.2f
         val arrowBoxOffset =
-            if (waypointVm.isToolbarOpened) toolbarWidth - (arrowBoxWidth / 2) else toolbarWidth - (arrowBoxWidth / 4)
+            if (isToolbarOpened) toolbarWidth - (arrowBoxWidth / 2) else toolbarWidth - (arrowBoxWidth / 4)
 
         val animatedOffset by animateDpAsState(
-            targetValue = if (waypointVm.isToolbarOpened) 0.dp else -toolbarWidth,
+            targetValue = if (isToolbarOpened) 0.dp else -toolbarWidth,
             animationSpec = tween(300),
             label = "ToolbarOffset"
         )
@@ -202,7 +207,7 @@ class WaypointActivity : ComponentActivity() {
                     .width(toolbarWidth)
                     .background(Color.Black.copy(alpha = 0.8f))
             ) {
-                if (waypointVm.isToolbarOpened) {
+                if (isToolbarOpened) {
                     Column(
                         modifier = Modifier
                             .statusBarsPadding()
@@ -230,30 +235,34 @@ class WaypointActivity : ComponentActivity() {
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_add,
                                 mapMode = MapMode.Waypoint.Add,
+                                currentMapMode = mapMode,
                                 onClick = {
                                     waypointVm.toggleMapEditMode(MapMode.Waypoint.Add)
                                 },
-                                isEnabled = !waypointVm.isShipMoving.value
+                                isEnabled = !isShipMoving
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_delete,
                                 mapMode = MapMode.Waypoint.Delete,
+                                currentMapMode = mapMode,
                                 onClick = {
                                     waypointVm.toggleMapEditMode(MapMode.Waypoint.Delete)
                                 },
-                                isEnabled = !waypointVm.isShipMoving.value
+                                isEnabled = !isShipMoving
                             )
                             IconWithEffectButton(
                                 drawableId = R.drawable.waypoint_move,
                                 mapMode = MapMode.Waypoint.Move,
+                                currentMapMode = mapMode,
                                 onClick = {
                                     waypointVm.toggleMapEditMode(MapMode.Waypoint.Move)
                                 },
-                                isEnabled = !waypointVm.isShipMoving.value
+                                isEnabled = !isShipMoving
                             )
                             IconWithEffectButton(
-                                drawableId = if (waypointVm.isShipMoving.value) R.drawable.pause else R.drawable.start,
+                                drawableId = if (isShipMoving) R.drawable.pause else R.drawable.start,
                                 mapMode = MapMode.Ship.DefaultMove,
+                                currentMapMode = mapMode,
                                 onClick = {
                                     waypointVm.toggleStartStop()
                                 },
@@ -261,6 +270,7 @@ class WaypointActivity : ComponentActivity() {
                             IconWithEffectButton(
                                 drawableId = R.drawable.back_to_home,
                                 mapMode = MapMode.Ship.ReverseMove,
+                                currentMapMode = mapMode,
                                 onClick = {
                                     waypointVm.goToHome()
 //                                    waypointVm.stopShipSimulation()
@@ -270,7 +280,7 @@ class WaypointActivity : ComponentActivity() {
 //                                        waypointVm.startShipSimulation()
                                     }
                                 },
-                                isEnabled = waypointVm.currentShipDirection.value == ShipDirection.DEFAULT
+                                isEnabled = currentShipDirection == ShipDirection.DEFAULT
                             )
                         }
                     }
@@ -284,20 +294,19 @@ class WaypointActivity : ComponentActivity() {
                     .offset(x = arrowBoxOffset)
                     .background(Color.DarkGray, shape = RoundedCornerShape(8.dp))
                     .clickable {
-                        val newValue = !waypointVm.isToolbarOpened
-                        waypointVm.isToolbarOpened = newValue
+                        val newValue = !isToolbarOpened
+                        waypointVm.setToolbarOpened(newValue)
 
                         if (!newValue) {
-                            val mode = waypointVm.mapMode
-                            if (mode is MapMode.Waypoint) {
-                                waypointVm.toggleMapEditMode(mode)
+                            if (mapMode is MapMode.Waypoint) {
+                                waypointVm.toggleMapEditMode(mapMode)
                             }
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (waypointVm.isToolbarOpened) Icons.AutoMirrored.Default.KeyboardArrowLeft else Icons.AutoMirrored.Default.KeyboardArrowRight,
+                    imageVector = if (isToolbarOpened) Icons.AutoMirrored.Default.KeyboardArrowLeft else Icons.AutoMirrored.Default.KeyboardArrowRight,
                     contentDescription = "Toggle",
                     tint = Color.White
                 )
@@ -309,20 +318,21 @@ class WaypointActivity : ComponentActivity() {
     fun IconWithEffectButton(
         drawableId: Int,
         mapMode: MapMode,
+        currentMapMode: MapMode,
         onClick: () -> Unit,
         isEnabled: Boolean = true
     ) {
         val borderColor = when {
             !isEnabled -> DarkRed
-            isEnabled && mapMode == waypointVm.mapMode -> SuccessGreen
-            isEnabled && mapMode != waypointVm.mapMode -> Color.Transparent
+            isEnabled && mapMode == currentMapMode -> SuccessGreen
+            isEnabled && mapMode != currentMapMode -> Color.Transparent
             else -> Color.Transparent
         }
 
         val shadowColor = when {
             !isEnabled -> DarkRed
-            isEnabled && mapMode == waypointVm.mapMode -> SuccessGreen
-            isEnabled && mapMode != waypointVm.mapMode -> Color.Transparent
+            isEnabled && mapMode == currentMapMode -> SuccessGreen
+            isEnabled && mapMode != currentMapMode -> Color.Transparent
             else -> Color.Transparent
         }
 
@@ -331,7 +341,7 @@ class WaypointActivity : ComponentActivity() {
             modifier = Modifier
                 .size(48.dp)
                 .shadow(
-                    elevation = if (mapMode == waypointVm.mapMode) 8.dp else 0.dp,
+                    elevation = if (mapMode == currentMapMode) 8.dp else 0.dp,
                     shape = CircleShape,
                     ambientColor = shadowColor,
                     spotColor = shadowColor
@@ -352,38 +362,43 @@ class WaypointActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     @Composable
     fun WaypointControlScreen(waypointVm: WaypointViewModel) {
-        val map = waypointVm.mapLibreMapState.value
+        val map by waypointVm.mapLibreMapState.collectAsState()
         val context = LocalContext.current
-        val waypoints = waypointVm.waypointPositions.toList()
-        val poi = waypointVm.poiPositions.toList()
-        val poiToggle = waypointVm.arePoiVisible
-        val phonePosition = waypointVm.phonePosition.value
-        val batteryLevel = waypointVm.externalBatteryLevel.value ?: 100
+        val waypoints by waypointVm.waypointPositions.collectAsState()
+        val poi by waypointVm.poiPositions.collectAsState()
+        val arePoiVisible by waypointVm.arePoiVisible.collectAsState()
+        val phonePosition by waypointVm.phonePosition.collectAsState()
+        val batteryLevel by waypointVm.externalBatteryLevel.collectAsState()
         val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
         val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
-        val mapMode = waypointVm.mapMode
-        val isToolbarOpened = waypointVm.isToolbarOpened
+        val mapMode by waypointVm.mapMode.collectAsState()
+        val isToolbarOpened by waypointVm.isToolbarOpened.collectAsState()
+        val shipPosition by waypointVm.shipPosition.collectAsState()
+        val cameraPosition by waypointVm.cameraPosition.collectAsState()
+        val openPOIDialog by waypointVm.openPOIDialog.collectAsState()
+        val poiId by waypointVm.poiId.collectAsState()
+        val currentBatteryLevel = batteryLevel ?: 100
         
         // Obsługa niskiej baterii - warning przy 20%, error przy 10%
         // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
         var lastBatteryWarning = remember { mutableStateOf<Int?>(null) }
-        LaunchedEffect(batteryLevel) {
+        LaunchedEffect(currentBatteryLevel) {
             when {
-                batteryLevel <= 10 && lastBatteryWarning.value != batteryLevel -> {
+                currentBatteryLevel <= 10 && lastBatteryWarning.value != currentBatteryLevel -> {
                     InfoPopupManager.show(
-                        message = "Krytycznie niski poziom baterii: ${batteryLevel}%",
+                        message = "Krytycznie niski poziom baterii: ${currentBatteryLevel}%",
                         type = InfoPopupType.ERROR
                     )
-                    lastBatteryWarning.value = batteryLevel
+                    lastBatteryWarning.value = currentBatteryLevel
                 }
-                batteryLevel in 11..20 && lastBatteryWarning.value != batteryLevel -> {
+                currentBatteryLevel in 11..20 && lastBatteryWarning.value != currentBatteryLevel -> {
                     InfoPopupManager.show(
-                        message = "Niski poziom baterii: ${batteryLevel}%",
+                        message = "Niski poziom baterii: ${currentBatteryLevel}%",
                         type = InfoPopupType.WARNING
                     )
-                    lastBatteryWarning.value = batteryLevel
+                    lastBatteryWarning.value = currentBatteryLevel
                 }
-                batteryLevel > 20 -> {
+                currentBatteryLevel > 20 -> {
                     // Reset gdy bateria wzrośnie powyżej 20%
                     lastBatteryWarning.value = null
                 }
@@ -427,7 +442,7 @@ class WaypointActivity : ComponentActivity() {
             style.getSourceAs<GeoJsonSource>("phone-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(listOf(phoneFeature)))
 
-            val saved = waypointVm.cameraPosition.value
+            val saved = cameraPosition
 
             val targetLat = saved?.lat ?: pos[0]
             val targetLng = saved?.lon ?: pos[1]
@@ -444,7 +459,7 @@ class WaypointActivity : ComponentActivity() {
         LaunchedEffect(mapMode, isToolbarOpened, map) {
             val mapboxMap = map ?: return@LaunchedEffect
 
-            val isEditMode = waypointVm.mapMode is MapMode.Waypoint
+            val isEditMode = mapMode is MapMode.Waypoint
 
             if (!isToolbarOpened || !isEditMode) {
                 mapboxMap.setMinZoomPreference(0.0)
@@ -457,14 +472,14 @@ class WaypointActivity : ComponentActivity() {
             mapboxMap.setMinZoomPreference(editMinZoom)
 
             if (currentZoom < editMinZoom) {
-                map.animateCamera(
+                map?.animateCamera(
                     CameraUpdateFactory.zoomTo(editMinZoom),
                     cameraZoomAnimationTime * 1000
                 )
             }
         }
 
-        LaunchedEffect(waypoints.toList()) {
+        LaunchedEffect(waypoints) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
@@ -480,7 +495,7 @@ class WaypointActivity : ComponentActivity() {
         }
         
         // Osobny LaunchedEffect dla pozycji łódki - aktualizuje się tylko gdy pozycja się zmienia
-        LaunchedEffect(waypointVm.shipPosition.value) {
+        LaunchedEffect(shipPosition) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
             
@@ -497,12 +512,12 @@ class WaypointActivity : ComponentActivity() {
                 ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getPoiFeature()))
         }
 
-        LaunchedEffect(poiToggle, map?.style) {
+        LaunchedEffect(arePoiVisible, map?.style) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
             style.getLayer("poi-layer")?.setProperties(
-                visibility(if (poiToggle) Property.VISIBLE else Property.NONE)
+                visibility(if (arePoiVisible) Property.VISIBLE else Property.NONE)
             )
         }
 
@@ -524,7 +539,7 @@ class WaypointActivity : ComponentActivity() {
                 )
                 
                 BatteryIndicator(
-                    level = waypointVm.externalBatteryLevel.value ?: 0,
+                    level = batteryLevel ?: 0,
                     isCharging = true,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -533,7 +548,6 @@ class WaypointActivity : ComponentActivity() {
 
                 FloatingActionButton(
                     onClick = {
-                        val shipPosition = waypointVm.shipPosition.value
                         val zoom = 16.0
                         map?.animateCamera(
                             CameraUpdateFactory.newLatLngZoom(
@@ -562,10 +576,7 @@ class WaypointActivity : ComponentActivity() {
 
                 FloatingActionButton(
                     onClick = {
-                        waypointVm.arePoiVisible = !waypointVm.arePoiVisible
-//                        waypointVm.externalBatteryLevel.value = waypointVm.externalBatteryLevel.value?.minus(
-//                            1
-//                        )
+                        waypointVm.setArePoiVisible(!arePoiVisible)
                     },
                     shape = CircleShape,
                     modifier = Modifier
@@ -576,7 +587,7 @@ class WaypointActivity : ComponentActivity() {
                     containerColor = VisibilityButtonColor
                 ) {
                     Icon(
-                        imageVector = if (!waypointVm.arePoiVisible)
+                        imageVector = if (!arePoiVisible)
                             Icons.Default.Visibility
                         else
                             Icons.Default.VisibilityOff,
@@ -587,17 +598,17 @@ class WaypointActivity : ComponentActivity() {
             }
         }
 
-        if (waypointVm.openPOIDialog) {
+        if (openPOIDialog) {
             FullScreenPopup(
                 isOpen = true,
-                onClose = { waypointVm.openPOIDialog = false },
-                poiId = waypointVm.poiId,
-                poiList = waypointVm.poiPositions,
-                onSaveName = { id, name -> waypointVm.updatePoiData(id, name, waypointVm.poiPositions.firstOrNull{ it.id == id }?.description.orEmpty()) },
-                onSaveDescription = { id, desc -> waypointVm.updatePoiData(id, waypointVm.poiPositions.firstOrNull{ it.id == id }?.name.orEmpty(), desc) },
+                onClose = { waypointVm.setOpenPOIDialog(false) },
+                poiId = poiId,
+                poiList = poi,
+                onSaveName = { id, name -> waypointVm.updatePoiData(id, name, poi.firstOrNull{ it.id == id }?.description.orEmpty()) },
+                onSaveDescription = { id, desc -> waypointVm.updatePoiData(id, poi.firstOrNull{ it.id == id }?.name.orEmpty(), desc) },
                 onDelete = { id ->
                     waypointVm.deletePoi(id)
-                    waypointVm.openPOIDialog = false
+                    waypointVm.setOpenPOIDialog(false)
                 }
             )
         }
@@ -607,6 +618,9 @@ class WaypointActivity : ComponentActivity() {
     fun MapTab(waypointVm: WaypointViewModel) {
         val context = LocalContext.current
         val mapView = remember { MapView(context) }
+        val mapMode by waypointVm.mapMode.collectAsState()
+        val waypointToMoveNo by waypointVm.waypointToMoveNo.collectAsState()
+        val poiPositions by waypointVm.poiPositions.collectAsState()
 
         AndroidView(
             factory = { mapView },
@@ -658,17 +672,17 @@ class WaypointActivity : ComponentActivity() {
 
                             // Jeśli jakaś flaga jest zaznaczona do przeniesienia, to niezależnie od trybu
                             // następne kliknięcie ustawia jej nową pozycję.
-                            val pendingMoveNo = waypointVm.waypointToMoveNo
+                            val pendingMoveNo = waypointToMoveNo
                             if (pendingMoveNo != null) {
                                 waypointVm.moveWaypoint(pendingMoveNo, latLng.longitude, latLng.latitude)
-                                waypointVm.waypointToMoveNo = null
+                                waypointVm.setWaypointToMoveNo(null)
 
-                                val bitmap = waypointVm.waypointBitmaps[pendingMoveNo]!!
+                                val bitmap = waypointVm.waypointBitmaps.value[pendingMoveNo]!!
                                 style.addImage("waypoint-icon-$pendingMoveNo", bitmap)
                                 return@addOnMapClickListener true
                             }
 
-                            when (waypointVm.mapMode) {
+                            when (mapMode) {
                                 MapMode.Waypoint.Add -> {
                                     val waypointNo = waypointVm.getNextAvailableWaypointNo()
 
@@ -686,12 +700,12 @@ class WaypointActivity : ComponentActivity() {
                                 }
 
                                 MapMode.Waypoint.Move -> {
-                                    val toMoveNo = waypointVm.waypointToMoveNo
+                                    val toMoveNo = waypointToMoveNo
                                     if (toMoveNo == null) {
                                         if (clickedNo != null && waypointVm.getWaypointByNo(clickedNo)?.isCompleted == false) {
-                                            waypointVm.waypointToMoveNo = clickedNo
+                                            waypointVm.setWaypointToMoveNo(clickedNo)
 
-                                            val bitmap = waypointVm.waypointBitmaps[clickedNo]!!
+                                            val bitmap = waypointVm.waypointBitmaps.value[clickedNo]!!
                                             val selectedBitmap = bitmap.scale(
                                                 (bitmap.width * 1.2f).toInt(),
                                                 (bitmap.height * 1.2f).toInt()
@@ -716,8 +730,8 @@ class WaypointActivity : ComponentActivity() {
                                 val id = clickedFeature.getStringProperty("id")?.toIntOrNull()
                                 if (id != null) {
                                     Log.d("POI_CLICKED", "ID of clicked POI Object: $id")
-                                    waypointVm.poiId = waypointVm.poiPositions.indexOfFirst { it.id == id }
-                                    waypointVm.openPOIDialog = true
+                                    waypointVm.setPoiId(poiPositions.indexOfFirst { it.id == id })
+                                    waypointVm.setOpenPOIDialog(true)
                                 }
                                 true
                             } else {
@@ -726,7 +740,7 @@ class WaypointActivity : ComponentActivity() {
                         }
                         updateMapFeatures(style)
                     }
-                    waypointVm.mapLibreMapState.value = mapboxMap
+                    waypointVm.setMapReady(mapboxMap)
                 }
             }
         )
@@ -818,8 +832,8 @@ class WaypointActivity : ComponentActivity() {
         style.addImage("ship-icon", shipBitmap)
         style.addImage("poi-icon", poiBitmap)
 
-        waypointVm.waypointPositions.forEach { wp ->
-            val bitmap = waypointVm.waypointBitmaps[wp.no]
+        waypointVm.waypointPositions.value.forEach { wp ->
+            val bitmap = waypointVm.waypointBitmaps.value[wp.no]
                 ?: getOrCreateWaypointBitmap(wp.no, context)
             addWaypointBitmapToStyle(wp.no, bitmap, style)
         }
@@ -839,7 +853,7 @@ class WaypointActivity : ComponentActivity() {
     }
 
     fun getOrCreateWaypointBitmap(no: Int, context: Context): Bitmap {
-        waypointVm.waypointBitmaps[no]?.let { return it }
+        waypointVm.waypointBitmaps.value[no]?.let { return it }
 
         val waypointDrawable = ContextCompat.getDrawable(context, R.drawable.ic_waypoint)!!
         val indicationDrawable = WaypointIndicationType.COMPASS.toWaypointIndication(context)
