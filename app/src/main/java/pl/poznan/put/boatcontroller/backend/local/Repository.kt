@@ -1,0 +1,52 @@
+package pl.poznan.put.boatcontroller.backend.local
+
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+
+class Repository(context: Context): UserDataDao {
+    private val dao = LocalDatabase.Companion.getInstance(context).userDataDao()
+    override suspend fun insert(recipe: UserData) = withContext(Dispatchers.IO) {
+        dao.insert(recipe)
+    }
+
+    override fun get(): Flow<UserData> {
+        return dao.get()
+    }
+
+    override suspend fun clear() = withContext(Dispatchers.IO) {
+        dao.clear()
+    }
+
+    override suspend fun edit(
+        login: String,
+        password: String,
+    ) = withContext(Dispatchers.IO) {
+        dao.edit(login, password)
+    }
+
+    override suspend fun editServer(ipAddress: String, port: String) = withContext(Dispatchers.IO) {
+        dao.editServer(ipAddress, port)
+    }
+
+    override suspend fun editRemember(isRemembered: Boolean) = withContext(Dispatchers.IO) {
+        dao.editRemember(isRemembered)
+    }
+
+    override suspend fun editSelectedMission(missionId: Int, missionName: String) =
+        withContext(Dispatchers.IO) {
+            dao.editSelectedMission(missionId, missionName)
+        }
+
+    override suspend fun editSelectedShip(shipName: String, shipRole: String) =
+        withContext(Dispatchers.IO) {
+            dao.editSelectedShip(shipName, shipRole)
+        }
+
+    override suspend fun getCount(): Int {
+        return withContext(Dispatchers.IO) {
+            dao.getCount()
+        }
+    }
+}

@@ -21,7 +21,7 @@
         android:theme="@style/Theme.BoatController"
         tools:targetApi="31">
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.main.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.BoatController.Splash"
             tools:ignore="DiscouragedApi" >
@@ -32,21 +32,21 @@
         </activity>
 
         <activity
-            android:name=".ControllerActivity"
+            android:name=".ui.controller.ControllerActivity"
             android:exported="true"
             android:theme="@style/Theme.BoatController"
             tools:ignore="DiscouragedApi" >
         </activity>
   
         <activity
-            android:name=".WaypointActivity"
+            android:name=".ui.waypoint.WaypointActivity"
             android:exported="true"
             android:theme="@style/Theme.BoatController"
             tools:ignore="DiscouragedApi" >
         </activity>
 
         <activity
-            android:name=".VRActivity"
+            android:name=".ui.vr.VRActivity"
             android:exported="true"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar"
             tools:ignore="DiscouragedApi" >
