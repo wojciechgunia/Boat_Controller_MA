@@ -12,6 +12,8 @@ import pl.poznan.put.boatcontroller.domain.enums.ConnectionState
 import pl.poznan.put.boatcontroller.domain.enums.ControllerTab
 import java.util.concurrent.TimeUnit
 
+const val MAX_RECONNECTING_ATTEMPTS = 3
+
 class HttpStreamService(
     config: HttpStreamConfig, // Jako property aby można było używać
     private val getActiveTabCallback: () -> ControllerTab // Callback do pobierania aktywnego taba
@@ -55,17 +57,14 @@ class HttpStreamService(
                 prevTab = currentTab
                 val currentState = connectionState.replayCache.lastOrNull() ?: ConnectionState.Reconnecting
 
-                // Wykryj zmianę stanu z Connected na Reconnecting - zresetuj licznik prób
                 if (previousState == ConnectionState.Connected && currentState == ConnectionState.Reconnecting) {
-                    reconnectingAttempts = 0 // Zresetuj licznik gdy przechodzimy z Connected na Reconnecting
+                    reconnectingAttempts = 0
                 }
                 previousState = currentState
 
                 if (currentState == ConnectionState.Reconnecting) {
-                    // Jesteśmy w stanie Reconnecting - wykonaj próbę połączenia
                     reconnectingAttempts++
 
-                    // Tworzymy nowy klient HTTP przy każdej próbie, aby uniknąć cache'owanych połączeń TCP
                     val connectionPool = ConnectionPool(1, 1, TimeUnit.SECONDS)
                     val client = OkHttpClient.Builder()
                         .connectTimeout(2, TimeUnit.SECONDS)
@@ -88,7 +87,6 @@ class HttpStreamService(
 
                         val response = client.newCall(request).execute()
                         if (response.isSuccessful) {
-                            // Serwer odpowiada - zmień stan na Connected
                             connectionState.value = ConnectionState.Connected
                             errorMessage.value = null
                             reconnectingAttempts = 0
@@ -98,17 +96,15 @@ class HttpStreamService(
                     } catch (_: Exception) { }
 
                     if (!connectionSuccessful) {
-                        val MAX_RECONNECTING_ATTEMPTS = 3
                         if (reconnectingAttempts >= MAX_RECONNECTING_ATTEMPTS) {
                             connectionState.value = ConnectionState.Disconnected
-                            errorMessage.value = "Reconnection failed after ${MAX_RECONNECTING_ATTEMPTS} attemps"
+                            errorMessage.value = "Reconnection failed after $MAX_RECONNECTING_ATTEMPTS attemps"
                             reconnectingAttempts = 0
                         } else {
                             delay(2000L)
                         }
                     }
                 } else if (currentState == ConnectionState.Connected) {
-                    // Jesteśmy połączeni - okresowo sprawdzaj dostępność serwera (co 5 sekund)
                     val connectionPool = ConnectionPool(1, 1, TimeUnit.SECONDS)
                     val client = OkHttpClient.Builder()
                         .connectTimeout(2, TimeUnit.SECONDS)
@@ -130,18 +126,15 @@ class HttpStreamService(
 
                         val response = client.newCall(request).execute()
                         if (!response.isSuccessful) {
-                            // Serwer nie odpowiada poprawnie - zmień na Reconnecting
                             connectionState.value = ConnectionState.Reconnecting
                             errorMessage.value = null
                         }
                         response.close()
                     } catch (_: Exception) {
-                        // Błąd połączenia - zmień na Reconnecting
                         connectionState.value = ConnectionState.Reconnecting
                         errorMessage.value = null
                     }
 
-                    // Sprawdzaj dostępność co 5 sekund gdy jesteśmy połączeni
                     delay(5000L)
                 } else {
                     reconnectingAttempts = 0

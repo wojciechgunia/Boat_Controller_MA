@@ -36,7 +36,6 @@ object AuthClient {
 
     fun setBaseUrl(url: String) {
         BASE_URL = url
-        // Invalidate cached client so new base url is used on the next call
         retrofit = null
     }
 
@@ -74,7 +73,6 @@ object ApiClient {
 }
 
 interface ApiService {
-    // Mission endpoints
     @POST("missions")
     suspend fun createMission(
         @Body request: MissionCreateRequest
@@ -93,7 +91,6 @@ interface ApiService {
         @Path("mission_id") missionId: Int
     ): Response<Unit>
 
-    // Waypoints endpoints
     @POST("waypoints")
     suspend fun createWaypoint(
         @Body request: WaypointCreateRequest
@@ -115,8 +112,6 @@ interface ApiService {
         @Path("waypoint_id") waypointId: Int,
     ): Response<Unit>
 
-
-    // Runnings endpoints
     @POST("runnings")
     suspend fun createRunning(
         @Body request: RunningCreateRequest
@@ -133,7 +128,6 @@ interface ApiService {
     ): Response<List<RunningDto>>
 
 
-    // POI endpoints
     @POST("pois")
     suspend fun createPoi(
         @Body request: POICreateRequest

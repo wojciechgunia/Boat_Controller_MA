@@ -289,7 +289,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                         Log.d("Socket", "Lost info ack for sNum=${event.sNum}")
                     }
                     is SocketEvent.CommandAck -> {
-                        Log.d("Socket", "✅ Command ACK received: ${event.commandType} sNum=${event.sNum}")
+                        Log.d("Socket", "Command ACK received: ${event.commandType} sNum=${event.sNum}")
                     }
                 }
             }
@@ -591,7 +591,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         description: String? = null
     ) {
         if (bitmap == null) {
-            Log.e("ControllerViewModel", "❌ Bitmap is null, cannot create POI")
+            Log.e("ControllerViewModel", "Bitmap is null, cannot create POI")
             InfoPopupManager.show(
                 message = "Nie można przechwycić obrazu. Spróbuj ponownie.",
                 type = InfoPopupType.ERROR
@@ -600,7 +600,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         }
         
         if (missionId.value == -1) {
-            Log.e("ControllerViewModel", "❌ Mission ID is -1, cannot create POI")
+            Log.e("ControllerViewModel", "Mission ID is -1, cannot create POI")
             InfoPopupManager.show(
                 message = "Brak wybranej misji. Wybierz misję przed zapisem POI.",
                 type = InfoPopupType.ERROR
@@ -625,7 +625,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                 
                 if (nearbyPoi != null) {
                     // POI istnieje w pobliżu - dodajemy obraz do istniejącego POI
-                    Log.d("ControllerViewModel", "📍 Found nearby POI (id=${nearbyPoi.id}), adding image")
+                    Log.d("ControllerViewModel", "Found nearby POI (id=${nearbyPoi.id}), adding image")
                     
                     // Pobierz aktualną listę obrazów
                     val existingPictures = nearbyPoi.pictures?.let { pics ->
@@ -651,11 +651,11 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                     updatePoiWithPictures(nearbyPoi.id, picturesJson)
                 } else {
                     // Nie znaleziono POI w pobliżu - tworzymy nowy
-                    Log.d("ControllerViewModel", "📍 No nearby POI found, creating new POI")
+                    Log.d("ControllerViewModel", "No nearby POI found, creating new POI")
                     createNewPoi(lat, lon, name, description, listOf(imageUrl))
                 }
             } catch (e: Exception) {
-                Log.e("ControllerViewModel", "❌ Error creating POI with image", e)
+                Log.e("ControllerViewModel", "Error creating POI with image", e)
                 InfoPopupManager.show(
                     message = "Błąd podczas zapisywania POI: ${e.message}",
                     type = InfoPopupType.ERROR
@@ -669,7 +669,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun updatePoiWithPictures(poiId: Int, picturesJson: String) {
         val backendApi = backendApi ?: run {
-            Log.e("ControllerViewModel", "❌ Backend API is null")
+            Log.e("ControllerViewModel", "Backend API is null")
             return
         }
         
@@ -684,7 +684,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         val response = backendApi.updatePoi(poiId, request)
         
         if (response.isSuccessful) {
-            Log.d("ControllerViewModel", "✅ POI updated successfully with new image")
+            Log.d("ControllerViewModel", "POI updated successfully with new image")
             InfoPopupManager.show(
                 message = "Obraz dodany do istniejącego POI",
                 type = InfoPopupType.SUCCESS
@@ -692,7 +692,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             // Odśwież listę POI
             loadMission()
         } else {
-            Log.e("ControllerViewModel", "❌ Failed to update POI: ${response.code()}")
+            Log.e("ControllerViewModel", "Failed to update POI: ${response.code()}")
             InfoPopupManager.show(
                 message = "Błąd podczas aktualizacji POI: ${response.code()}",
                 type = InfoPopupType.ERROR
@@ -711,7 +711,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         pictures: List<String>
     ) {
         val backendApi = backendApi ?: run {
-            Log.e("ControllerViewModel", "❌ Backend API is null")
+            Log.e("ControllerViewModel", "Backend API is null")
             return
         }
         
@@ -733,7 +733,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         val response = backendApi.createPoi(request)
         
         if (response.isSuccessful) {
-            Log.d("ControllerViewModel", "✅ POI created successfully")
+            Log.d("ControllerViewModel", "POI created successfully")
             InfoPopupManager.show(
                 message = "POI zapisany pomyślnie",
                 type = InfoPopupType.SUCCESS
@@ -741,7 +741,7 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             // Odśwież listę POI
             loadMission()
         } else {
-            Log.e("ControllerViewModel", "❌ Failed to create POI: ${response.code()}")
+            Log.e("ControllerViewModel", "Failed to create POI: ${response.code()}")
             InfoPopupManager.show(
                 message = "Błąd podczas zapisywania POI: ${response.code()}",
                 type = InfoPopupType.ERROR

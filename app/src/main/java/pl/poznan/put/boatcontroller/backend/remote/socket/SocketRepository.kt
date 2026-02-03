@@ -57,27 +57,26 @@ object SocketRepository {
                     }
                     handleIncomingEvent(event)
                 } else {
-                    Log.w("SocketRepository", "⚠️ Failed to parse: $raw")
+                    Log.w("SocketRepository", "Failed to parse: $raw")
                 }
             }
         }
     }
 
     private suspend fun handleIncomingEvent(event: SocketEvent) {
-        // Obsługa ACK dla komend krytycznych
         if (event is SocketEvent.CommandAck) {
             pendingMutex.withLock {
                 val pending = pendingCommands.remove(event.sNum)
                 if (pending != null) {
-                    Log.d("SocketRepository", "✅ ACK received for ${event.commandType} sNum=${event.sNum}")
+                    Log.d("SocketRepository", "ACK received for ${event.commandType} sNum=${event.sNum}")
                 } else {
-                    Log.w("SocketRepository", "⚠️ ACK received for unknown sNum=${event.sNum}")
+                    Log.w("SocketRepository", "ACK received for unknown sNum=${event.sNum}")
                 }
             }
         }
 
         if (event is SocketEvent.LostInformation) {
-            Log.d("SocketRepository", "📨 LostInformation ACK: sNum=${event.sNum}")
+            Log.d("SocketRepository", "LostInformation ACK: sNum=${event.sNum}")
         }
 
         _events.emit(event)
@@ -113,16 +112,13 @@ object SocketRepository {
             pendingMutex.withLock {
                 pendingCommands[sNum] = pending
             }
-            
-            // Wyślij pierwszą próbę
+
             service.send(encoded)
-            
-            // Uruchom retry loop
+
             CoroutineScope(Dispatchers.IO).launch {
                 retryLoop(pending)
             }
         } else {
-            // Komenda realtime (SetSpeed) - brak ACK, wysyłaj bez retry
             service.send(encoded)
         }
     }
@@ -131,21 +127,19 @@ object SocketRepository {
         delay(ACK_TIMEOUT_MS)
         
         pendingMutex.withLock {
-            // Sprawdź czy ACK już przyszedł
             if (!pendingCommands.containsKey(pending.sNum)) {
-                // ACK otrzymany - zakończ
                 return
             }
             
             // ACK nie przyszedł - retry
             if (pending.retryCount < pending.maxRetries) {
                 pending.retryCount++
-                Log.w("SocketRepository", "🔄 RETRY ${pending.retryCount}/${pending.maxRetries} for ${pending.commandType} sNum=${pending.sNum}")
+                Log.w("SocketRepository", "RETRY ${pending.retryCount}/${pending.maxRetries} for ${pending.commandType} sNum=${pending.sNum}")
                 service.send(pending.encoded)
 
                 retryLoop(pending)
             } else {
-                Log.e("SocketRepository", "❌ FAILED after ${pending.maxRetries} retries for ${pending.commandType} sNum=${pending.sNum}")
+                Log.e("SocketRepository", "FAILED after ${pending.maxRetries} retries for ${pending.commandType} sNum=${pending.sNum}")
                 pendingCommands.remove(pending.sNum)
             }
         }

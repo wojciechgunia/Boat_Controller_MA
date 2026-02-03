@@ -15,8 +15,6 @@ fun createWaypointBitmap(
     indicationDrawable: WaypointIndication?,
     waypointNumber: String = ""
 ): Bitmap {
-    // Canvas is creating image on (0,0) left/top so additional
-    // pixels are going on bottom/right
     val extraTop = 30
     val extraRight = 30
 

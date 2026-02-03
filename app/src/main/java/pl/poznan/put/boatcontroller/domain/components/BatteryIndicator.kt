@@ -44,7 +44,7 @@ fun BatteryIndicator(
     val color = when {
         level < 11 -> ErrorRed
         level < 41 -> WarningYellow
-        else -> LightGreen // Jaśniejsza zieleń dla baterii
+        else -> LightGreen
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "")
@@ -90,7 +90,6 @@ fun BatteryIndicator(
                     .background(Color.Gray, RoundedCornerShape(1.dp))
             )
 
-            // Charging icon
             if (isCharging) {
                 Icon(
                     imageVector = Icons.Default.Bolt,

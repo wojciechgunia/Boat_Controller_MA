@@ -63,7 +63,8 @@ object HttpStreamConfigs {
         }
     }
     
-    // Przykład jak dodać nowy stream:
+    // Przykład: nowy stream
+
     // val NEW_STREAM = HttpStreamConfig(
     //     name = "new_stream",
     //     port = 8082,

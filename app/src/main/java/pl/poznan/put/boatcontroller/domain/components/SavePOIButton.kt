@@ -39,26 +39,20 @@ fun SavePOIButton(
     name: String? = null,
     description: String? = null
 ) {
-    // Obserwuj czy WebView jest gotowy do interakcji
     val isWebViewReady by HttpStreamRepository.isWebViewReady.collectAsState()
-    
-    // Przycisk widoczny tylko gdy mamy połączenie i WebView jest gotowy
+
     if (connectionState == ConnectionState.Connected && isWebViewReady) {
         FloatingActionButton(
             onClick = {
-                // Synchroniczne przechwytywanie bitmapy (uproszczone, bez PixelCopy)
-                // Dzięki temu nie przechwytujemy elementów interfejsu (przycisków, wskaźników stanu)
                 val bitmap = HttpStreamRepository.captureWebViewBitmap()
                 
                 if (bitmap != null) {
-                    // Wywołaj funkcję zapisu POI z obrazem
                     viewModel.createPoiWithImage(
                         bitmap = bitmap,
                         name = name,
                         description = description
                     )
                 } else {
-                    // Jeśli nie udało się przechwycić bitmapy
                     InfoPopupManager.show(
                         message = "Nie można przechwycić obrazu. Upewnij się, że stream jest w pełni załadowany.",
                         type = InfoPopupType.ERROR
@@ -69,7 +63,7 @@ fun SavePOIButton(
             modifier = modifier
                 .shadow(16.dp, CircleShape, clip = false)
                 .clip(CircleShape),
-            containerColor = MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
+            containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.save),

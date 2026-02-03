@@ -19,9 +19,6 @@ import java.lang.ref.WeakReference
 
 /**
  * Repository do zarządzania połączeniami HTTP stream.
- * CENTRALNY STAN - single source of truth dla widoczności tabów i aktywnych streamów.
- *
- * Używa jednego serwisu dla wszystkich streamów - różnią się tylko configiem.
  */
 object HttpStreamRepository {
     private var streamService: HttpStreamService? = null
@@ -31,7 +28,6 @@ object HttpStreamRepository {
     private var activeWebViewRef: WeakReference<WebView>? = null
     private var activeConfig: HttpStreamConfig? = null
 
-    // Nowa flaga informująca czy WebView jest gotowy do interakcji (nie null)
     private val _isWebViewReady = MutableStateFlow(false)
     val isWebViewReady = _isWebViewReady.asStateFlow()
 
@@ -81,7 +77,6 @@ object HttpStreamRepository {
                 streamService?.stop()
                 resetObservation()
 
-                // Uruchom nowy serwis z odpowiednim configiem i callbackiem do pobierania aktywnego taba
                 streamService = HttpStreamService(config) {
                     currentActiveTab
                 }
@@ -95,7 +90,6 @@ object HttpStreamRepository {
             destroyWebView()
         }
 
-        // Loguj zmianę tylko gdy się zmienił
         if (previousTab != tab) {
             Log.d("ControllerActivity", "Actual tab: ${tab.name}")
         }
@@ -106,7 +100,6 @@ object HttpStreamRepository {
     fun registerWebView(webView: WebView?, config: HttpStreamConfig?) {
         activeWebViewRef = webView?.let { WeakReference(it) }
         activeConfig = config
-        // Aktualizuj stan gotowości WebView
         _isWebViewReady.value = webView != null
     }
 
@@ -118,12 +111,10 @@ object HttpStreamRepository {
     fun unregisterWebView(webView: WebView?) {
         val current = activeWebViewRef?.get()
         if (current == webView || webView == null) {
-            // Jeśli to ten sam WebView (lub null), czyścimy
             activeWebViewRef = null
             activeConfig = null
             _isWebViewReady.value = false
         } else {
-            // Jeśli to inny WebView (np. stary, a już mamy nowy), ignorujemy
             Log.d("HttpStreamRepository", "Ignoring unregister for inactive WebView")
         }
     }
@@ -146,7 +137,6 @@ object HttpStreamRepository {
 
     fun destroyWebView() {
         val webView = activeWebView
-        // Ustaw null natychmiast, aby uniknąć wielokrotnych wywołań
         activeWebViewRef = null
         activeConfig = null
         requestCount = 0
@@ -160,9 +150,7 @@ object HttpStreamRepository {
                 view.clearCache(true)
                 view.loadUrl("about:blank")
                 view.destroy()
-            } catch (_: Exception) {
-                // Ignoruj błędy przy niszczeniu - WebView może być już zniszczony
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -191,7 +179,6 @@ object HttpStreamRepository {
      * Wywoływane gdy aplikacja jest minimalizowana - niszczy wszystkie WebView.
      */
     fun onAppPaused() {
-        // Zapamiętaj ostatni aktywny tab przed zniszczeniem
         lastActiveTabBeforePause = currentActiveTab
         destroyWebView()
         streamService?.stop()
@@ -204,7 +191,6 @@ object HttpStreamRepository {
      * Wywoływane gdy aplikacja wraca na ekran - przywraca ostatni aktywny tab.
      */
     fun onAppResumed(): ControllerTab? {
-        // Przywróć ostatni aktywny tab (jeśli był Sonar lub Camera)
         val tabToRestore = lastActiveTabBeforePause
         if (tabToRestore == ControllerTab.SONAR || tabToRestore == ControllerTab.CAMERA) {
             setActiveTab(tabToRestore)
@@ -234,28 +220,22 @@ object HttpStreamRepository {
      */
     fun forceReconnect(tab: ControllerTab) {
         destroyWebView()
-        // Resetuj stan połączenia - rozpocznij próbę połączenia
         _connectionState.value = ConnectionState.Reconnecting
         _errorMessage.value = null
-        // Resetuj czas ostatniego requestu
         lastRequestTime = 0L
 
-        // WAŻNE: Zatrzymaj i ponownie utwórz serwis, aby zresetować jego stan i uniknąć cache'owanych połączeń
         streamService?.stop()
-        resetObservation() // Resetuj obserwację przed utworzeniem nowego serwisu
+        resetObservation()
         streamService = null
 
-        // Ustaw aktywny tab PRZED utworzeniem serwisu (tylko jeśli się zmienił)
         if (currentActiveTab != tab) {
             currentActiveTab = tab
         }
 
-        // Upewnij się że tab jest aktywny przed utworzeniem serwisu
         if (tab == ControllerTab.SONAR || tab == ControllerTab.CAMERA) {
             val config = HttpStreamConfigs.getConfigForTab(tab)
             if (config != null) {
                 streamService = HttpStreamService(config) {
-                    // Callback do pobierania aktywnego taba
                     currentActiveTab
                 }
                 streamService?.startConnectionLoop()
@@ -265,11 +245,10 @@ object HttpStreamRepository {
     }
 
     /**
-     * Obserwuje stan połączenia z serwisu i przekazuje do publicznego flow.
-     * Wywoływane tylko raz dla każdego serwisu.
+     * Obserwuje stan połączenia z serwisu i przekazuje do publicznego flow
      */
     private fun observeConnectionState() {
-        if (isObservingConnection) return // Już obserwujemy
+        if (isObservingConnection) return
 
         isObservingConnection = true
         CoroutineScope(Dispatchers.IO).launch {
@@ -310,15 +289,11 @@ object HttpStreamRepository {
             val bitmap = createBitmap(webView.width, webView.height)
             val canvas = Canvas(bitmap)
 
-            // Wymuszamy renderowanie programowe (software) na czas rysowania
-            // To pomaga przechwycić zawartość hardware-accelerated i zapewnia spójne rysowanie
             val originalLayerType = webView.layerType
 
             try {
-                // Przełącz na renderowanie programowe
                 webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
 
-                // Rysuj tło
                 val bg = webView.background
                 if (bg != null) {
                     bg.draw(canvas)
@@ -326,17 +301,15 @@ object HttpStreamRepository {
                     canvas.drawColor(Color.WHITE)
                 }
 
-                // Rysuj zawartość
                 webView.draw(canvas)
             } finally {
-                // Przywróć oryginalny typ warstwy
                 webView.setLayerType(originalLayerType, null)
             }
 
-            Log.d("HttpStreamRepository", "✅ Captured bitmap using direct draw: ${bitmap.width}x${bitmap.height}")
+            Log.d("HttpStreamRepository", "Captured bitmap using direct draw: ${bitmap.width}x${bitmap.height}")
             bitmap
         } catch (e: Exception) {
-            Log.e("HttpStreamRepository", "❌ Error capturing bitmap from WebView", e)
+            Log.e("HttpStreamRepository", "Error capturing bitmap from WebView", e)
             null
         }
     }

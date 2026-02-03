@@ -152,7 +152,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                             )
                             
                             if (distanceToHome < waypointReachedThreshold) {
-                                Log.d("WaypointViewModel", "🏠 Dom osiągnięty! Zatrzymuję statek.")
+                                Log.d("WaypointViewModel", "Dom osiągnięty! Zatrzymuję statek.")
                                 // Zatrzymaj statek
                                 sendAction("SP", "")
                                 SocketRepository.send(SocketCommand.SetSpeed(0, 0, 1, nextSNum())) // winch = 1 (stop), speed = 0 (stop)
@@ -324,11 +324,11 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 SocketRepository.send(SocketCommand.SetSpeed(5, 5, 1, nextSNum())) // winch = 1 (stop), speed = 5 (średnia prędkość)
                 
                 _isShipMoving.value = true
-                Log.d("WaypointViewModel", "🏠 Powrót do domu - uruchomiono statek")
+                Log.d("WaypointViewModel", "Powrót do domu - uruchomiono statek")
             } else {
                 // Statek już płynie - upewnij się że ma prędkość
                 SocketRepository.send(SocketCommand.SetSpeed(5, 5, 1, nextSNum())) // winch = 1 (stop), speed = 5 (średnia prędkość)
-                Log.d("WaypointViewModel", "🏠 Powrót do domu - kontynuuję z prędkością")
+                Log.d("WaypointViewModel", "Powrót do domu - kontynuuję z prędkością")
             }
         }
     }
@@ -354,7 +354,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                     SocketRepository.send(SocketCommand.SetSpeed(5, 5, 1, nextSNum())) // winch = 1 (stop), speed = 5 (średnia prędkość)
                     
                     _isShipMoving.value = true
-                    Log.d("WaypointViewModel", "🏠 Wznowiono powrót do domu")
+                    Log.d("WaypointViewModel", "Wznowiono powrót do domu")
                 } else {
                     // Normalna nawigacja waypointowa
                     if (_waypointPositions.value.isEmpty()) {
@@ -376,7 +376,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                             sendAction("SW", "${lastCompletedWaypoint!!.lon};${lastCompletedWaypoint!!.lat}")
                             
                             _isShipMoving.value = true
-                            Log.d("WaypointViewModel", "🚀 Start nawigacji do ostatniego waypointa (${lastCompletedWaypoint!!.lon}, ${lastCompletedWaypoint!!.lat})")
+                            Log.d("WaypointViewModel", "Start nawigacji do ostatniego waypointa (${lastCompletedWaypoint!!.lon}, ${lastCompletedWaypoint!!.lat})")
                         } else {
                             Log.w("WaypointViewModel", "Brak waypointów i brak zapamiętanego ostatniego waypointa - nie można rozpocząć nawigacji")
                             return@launch
@@ -404,7 +404,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                         sendAction("SW", "${firstWp.lon};${firstWp.lat}")
                         
                         _isShipMoving.value = true
-                        Log.d("WaypointViewModel", "🚀 Start nawigacji do waypointa ${firstWp.no} (${firstWp.lon}, ${firstWp.lat})")
+                        Log.d("WaypointViewModel", "Start nawigacji do waypointa ${firstWp.no} (${firstWp.lon}, ${firstWp.lat})")
                     }
                 }
             } else {
@@ -413,7 +413,7 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
                 // Zatrzymaj silniki (speed = 0)
                 SocketRepository.send(SocketCommand.SetSpeed(0, 0, 1, nextSNum())) // winch = 1 (stop), speed = 0 (stop)
                 _isShipMoving.value = false
-                Log.d("WaypointViewModel", "⏸️  Pauza nawigacji")
+                Log.d("WaypointViewModel", "Pauza nawigacji")
             }
         }
     }

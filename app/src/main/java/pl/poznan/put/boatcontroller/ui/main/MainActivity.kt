@@ -243,7 +243,6 @@ fun HomeContent(navController: NavController, mainVm: MainViewModel) {
                     "VR Cam",
                     R.drawable.bc_vr,
                     navController,
-//                    enabled = if(isLandscape) mainVm.isLoggedIn else canAccessController,
                     enabled = false,
                     navDest = "vr_mode",
                     mainVm = mainVm
@@ -386,8 +385,7 @@ fun ShipSelect(
     var expanded by remember { mutableStateOf(false) }
     var selectedText by remember { mutableStateOf("") }
     var ships = emptyList<ShipOption>()
-    
-    // Przywróć zapisany wybór statku
+
     LaunchedEffect(mainVm.selectedShip.name) {
         if (mainVm.selectedShip.name.isNotEmpty()) {
             val role = if (mainVm.isCaptain) "Captain" else "Observer"
@@ -739,7 +737,6 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Ustawienia socketu (łódka / ESP)
             OutlinedTextField(
                 value = mainVm.socketIp,
                 onValueChange = { mainVm.updateSocketIP(it) },
@@ -789,8 +786,7 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
     var expanded by remember { mutableStateOf(false) }
     var isCreatingMission by remember { mutableStateOf(false) }
     var missionToCreate by remember { mutableStateOf<String?>(null) }
-    
-    // Przywróć zapisaną misję
+
     LaunchedEffect(mainVm.selectedMission.id) {
         if (mainVm.selectedMission.id != -1 && selectedMissionLocal.id == -1) {
             selectedMissionLocal = mainVm.selectedMission
@@ -905,23 +901,19 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
             }
         }
 
-        // Obsługa tworzenia misji
         LaunchedEffect(missionToCreate) {
             missionToCreate?.let { missionName ->
                 try {
                     val newMission = mainVm.createMission(missionName)
                     if (newMission != null && newMission.id != -1) {
-                        // Czekamy chwilę, aby upewnić się, że lista misji została zaktualizowana
                         delay(100)
                         selectedMissionLocal = newMission
                         filter = newMission.name
                         expanded = false
                     } else {
-                        // Jeśli misja nie została utworzona, resetujemy stan
                         isCreatingMission = false
                     }
-                } catch (e: Exception) {
-                    // W przypadku błędu resetujemy stan
+                } catch (_: Exception) {
                     isCreatingMission = false
                 } finally {
                     missionToCreate = null
@@ -963,8 +955,6 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
         }
     }
 }
-
-// === Validators ===
 
 fun validateUsername(username: String): String? {
     val regex = Regex("^[a-z0-9]{4,20}$")

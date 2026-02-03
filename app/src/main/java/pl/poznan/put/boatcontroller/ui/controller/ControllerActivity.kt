@@ -222,8 +222,6 @@ class ControllerActivity: ComponentActivity() {
         return smallestWidthDp >= 600
     }
 
-    // ===========================  Controller screen ================================================
-
     fun sendEnginePower(viewModel: ControllerViewModel) {
         viewModel.sendSpeed(
             viewModel.leftEnginePower.value,
@@ -235,7 +233,6 @@ class ControllerActivity: ComponentActivity() {
         val lat = viewModel.shipPosition.value.lat
         val lon = viewModel.shipPosition.value.lon
         viewModel.updateHomePosition(ShipHomePosition(lat, lon))
-        // Brak dedykowanej komendy w nowym protokole – używamy akcji GH (Go Home)
         viewModel.sendAction("GH", "")
     }
 
@@ -251,7 +248,7 @@ class ControllerActivity: ComponentActivity() {
 
         val secondary = MaterialTheme.colorScheme.secondary // Kolor tekstu jak w Tab'ach (PrimaryLightBlue)
         val background = MaterialTheme.colorScheme.secondaryContainer // Tło pozostaje bez zmian
-        val iconAndTextColor = if (isActive || isPressed) secondary else Color.White
+        val iconAndTextColor = if (isActive || isPressed) secondary else MaterialTheme.colorScheme.onSecondaryContainer
         val underlineColor = if (isActive || isPressed) secondary else Color.LightGray
 
         Column(
@@ -261,7 +258,8 @@ class ControllerActivity: ComponentActivity() {
                 .height(50.dp)
                 .background(background)
                 .clickable(
-                    interactionSource = interactionSource,                    indication = null,
+                    interactionSource = interactionSource,
+                    indication = null,
                     onClick = onClick
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -300,23 +298,18 @@ class ControllerActivity: ComponentActivity() {
         val batteryLevel by viewModel.externalBatteryLevel.collectAsState()
         val currentBatteryLevel = batteryLevel ?: 100
         
-        // Throttling dla wysyłania wiadomości - maksymalnie co 100ms
         val scope = remember { CoroutineScope(Dispatchers.Main) }
         var lastSendJob by remember { mutableStateOf<Job?>(null) }
         
         fun sendEnginePowerThrottled(viewModel: ControllerViewModel) {
-            // Anuluj poprzednie zadanie jeśli jeszcze nie zostało wykonane
             lastSendJob?.cancel()
             
-            // Utwórz nowe zadanie z opóźnieniem 100ms
             lastSendJob = scope.launch {
                 delay(200)
                 sendEnginePower(viewModel)
             }
         }
         
-        // Obsługa niskiej baterii - warning przy 20%, error przy 10%
-        // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
         var lastBatteryWarning = remember { mutableStateOf<Int?>(null) }
         LaunchedEffect(currentBatteryLevel) {
             when {
@@ -335,7 +328,6 @@ class ControllerActivity: ComponentActivity() {
                     lastBatteryWarning.value = currentBatteryLevel
                 }
                 currentBatteryLevel > 20 -> {
-                    // Reset gdy bateria wzrośnie powyżej 20%
                     lastBatteryWarning.value = null
                 }
             }
@@ -350,7 +342,6 @@ class ControllerActivity: ComponentActivity() {
         val selectedTab by viewModel.selectedTab.collectAsState()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // InfoPopup dla warningów i błędów (na górze ekranu) - tylko raz na całym activity
             InfoPopup(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -453,12 +444,11 @@ class ControllerActivity: ComponentActivity() {
                         TabRow(
                             selectedTabIndex = tabs.indexOf(selectedTab),
                             containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.secondary, // Jaśniejszy niebieski dla tekstu Tab'ów
+                            contentColor = MaterialTheme.colorScheme.secondary,
                             indicator = { tabPositions ->
                                 TabRowDefaults.SecondaryIndicator(
                                     modifier = Modifier.tabIndicatorOffset(tabPositions[tabs.indexOf(selectedTab)]),
-                                    color = MaterialTheme.colorScheme.secondary // Jaśniejszy niebieski dla wskaźnika
-                                )
+                                    color = MaterialTheme.colorScheme.secondary                                )
                             }
                         ) {
                             tabs.forEach { tab ->
@@ -467,7 +457,6 @@ class ControllerActivity: ComponentActivity() {
                                     onClick = { 
                                         viewModel.setSelectedTab(tab)
                                         
-                                        // Informuj HttpStreamRepository o zmianie taba
                                         HttpStreamRepository.setActiveTab(tab)
                                     },
                                     text = { 
@@ -685,16 +674,13 @@ class ControllerActivity: ComponentActivity() {
                                 viewModel.saveCameraPosition(location.latitude, location.longitude, 13.0)
                                 Log.d("PHONE_LOCATION", "Lat: ${location.latitude}, Lon: ${location.longitude}")
                             } else {
-                                // Brak aktualnej lokalizacji telefonu – nie pokazujemy operatora
                                 Log.d("PHONE_LOCATION", "No phone location available (null)")
                             }
                         }
                         .addOnFailureListener { e ->
-                            // Błąd pobierania lokalizacji – nie pokazujemy operatora
                             Log.d("PHONE_LOCATION", "Error fetching phone location: ${e.message}")
                         }
                 } catch (_: SecurityException) {
-                    // Brak uprawnień – nie pokazujemy operatora
                     Log.d("PHONE_LOCATION", "SecurityException – location permission missing")
                 }
             }
@@ -732,7 +718,6 @@ class ControllerActivity: ComponentActivity() {
                 val bitmap = getOrCreateWaypointBitmap(wp.no, context)
                 addWaypointBitmapToStyle(wp.no, bitmap, style)
             }
-            // Aktualizuj tylko waypointy i połączenia, NIE pozycję łódki
             style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(viewModel.getConnectionLinesFeature()))
             style.getSourceAs<GeoJsonSource>("waypoint-source")
@@ -743,12 +728,10 @@ class ControllerActivity: ComponentActivity() {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
-            // Aktualizuj tylko POI, NIE pozycję łódki
             style.getSourceAs<GeoJsonSource>("poi-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(viewModel.getPoiFeature()))
         }
         
-        // Osobny LaunchedEffect dla pozycji łódki - aktualizuje się tylko gdy pozycja się zmienia
         LaunchedEffect(shipPosition) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
@@ -848,17 +831,9 @@ class ControllerActivity: ComponentActivity() {
                                 }
                             """.trimIndent()
                             mapboxMap.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                                // Optymalizacja: Zwiększ cache dla kafelków mapy aby zmniejszyć zużycie danych
-                                // Cache jest włączony domyślnie, ale zwiększamy jego rozmiar
                                 try {
-                                    // MapLibre automatycznie cache'uje kafelki, ale możemy zwiększyć limit
-                                    // Domyślny cache to ~50 MB, zwiększamy do ~100 MB dla lepszej wydajności
-                                    // To zmniejszy potrzebę ponownego pobierania kafelków przy przesuwaniu mapy
                                     mapboxMap.tileCacheEnabled = true
-                                    // Uwaga: setTileCacheSize() może nie być dostępne we wszystkich wersjach MapLibre
-                                    // Jeśli metoda nie istnieje, cache będzie używał domyślnego rozmiaru
                                 } catch (e: Exception) {
-                                    // Ignoruj jeśli metoda nie jest dostępna
                                     Log.d("MapLibre", "Tile cache optimization not available: ${e.message}")
                                 }
                                 
@@ -959,28 +934,6 @@ class ControllerActivity: ComponentActivity() {
                     }
                 }
                 
-//                // Tymczasowy przycisk do testowania baterii (tylko do testów)
-//                FloatingActionButton(
-//                    onClick = {
-//                        viewModel.simulateBatteryDecrease()
-//                        if ((viewModel.externalBatteryLevel.value ?: 100) <= 0) {
-//                            viewModel.resetBattery()
-//                        }
-//                    },
-//                    shape = CircleShape,
-//                    modifier = Modifier
-//                        .align(Alignment.BottomStart)
-//                        .padding(start = 16.dp, bottom = 16.dp)
-//                        .shadow(16.dp, CircleShape, clip = false)
-//                        .clip(CircleShape),
-//                    containerColor = Color.Gray
-//                ) {
-//                    Text(
-//                        text = "🔋",
-//                        fontSize = 20.sp,
-//                        modifier = Modifier.padding(4.dp)
-//                    )
-//                }
             }
         }
     }
@@ -1006,29 +959,21 @@ class ControllerActivity: ComponentActivity() {
         config: HttpStreamConfig,
         modifier: Modifier = Modifier
     ) {
-        // Stan widoczności wskaźnika połączenia
         var isIndicatorVisible by remember { mutableStateOf(false) }
         var hideJob by remember { mutableStateOf<Job?>(null) }
         val scope = rememberCoroutineScope()
         val connectionState by viewModel.httpConnectionState.collectAsState()
         val errorMessage by viewModel.httpErrorMessage.collectAsState()
         
-        // Funkcja do pokazania wskaźnika na ~3 sekundy
         fun showIndicator() {
-            // Anuluj poprzednie zadanie ukrycia jeśli istnieje
             hideJob?.cancel()
-            
-            // Pokaż wskaźnik
             isIndicatorVisible = true
-            
-            // Zaplanuj ukrycie po ~2 sekundach (animacja zanikania trwa 1.5s, więc łącznie ~3.5s)
             hideJob = scope.launch {
-                delay(2000) // 2 sekundy widoczności
-                isIndicatorVisible = false // Animacja zanikania trwa 1.5s
+                delay(2000)
+                isIndicatorVisible = false
             }
         }
         
-        // Automatycznie pokaż wskaźnik przy wejściu do taba
         LaunchedEffect(Unit) {
             showIndicator()
         }
@@ -1041,13 +986,10 @@ class ControllerActivity: ComponentActivity() {
                 label = label,
                 config = config,
                 onTap = {
-                    // Callback wywoływany gdy użytkownik kliknie w WebView
-                    // (ale nie w interaktywne elementy jak przyciski)
                     showIndicator()
                 }
             )
             
-            // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
             ConnectionStatusIndicator(
                 connectionState = connectionState,
                 errorMessage = errorMessage,
@@ -1057,7 +999,6 @@ class ControllerActivity: ComponentActivity() {
                     .padding(8.dp)
             )
 
-            // Przycisk zapisu POI - widoczny TYLKO gdy połączono
             if (connectionState == ConnectionState.Connected) {
                 SavePOIButton(
                     viewModel = viewModel,
@@ -1095,7 +1036,6 @@ class ControllerActivity: ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(0.dp)
             ) {
-                // Sekcja: Głębokość (przeniesiona wyżej)
                 item {
                     SensorSection(
                         title = "Głębokość",
@@ -1175,8 +1115,7 @@ class ControllerActivity: ComponentActivity() {
                 text = title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.secondary // Jaśniejszy niebieski dla tytułów sekcji
-            )
+                color = MaterialTheme.colorScheme.secondary            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -1218,7 +1157,6 @@ class ControllerActivity: ComponentActivity() {
         }
     }
 
-    // MOJE FUNKCJE Z WAYPOINT ACTIVITY
 
     fun initializeMapSources(style: Style) {
         style.addSource(GeoJsonSource("waypoint-connections-source", FeatureCollection.fromFeatures(emptyArray())))
@@ -1410,37 +1348,34 @@ class ControllerActivity: ComponentActivity() {
         isVisible: Boolean = true,
         modifier: Modifier = Modifier
     ) {
-        // Uspójniony stan - ten sam co w HttpStreamView
         val (baseColor, text) = when (connectionState) {
             ConnectionState.Connected -> SuccessGreen to "Connected"
             ConnectionState.Reconnecting -> WarningYellow to "Reconnecting..."
             ConnectionState.Disconnected -> ErrorRed to "Disconnected"
         }
         
-        // Animacja przezroczystości dla fade in/out
         val alpha by animateFloatAsState(
             targetValue = if (isVisible) 1f else 0f,
             animationSpec = when {
                 isVisible -> tween(
-                    durationMillis = 200, // Krótka animacja pojawiania się
+                    durationMillis = 200,
                     easing = FastOutSlowInEasing
                 )
                 else -> tween(
-                    durationMillis = 1500, // Dłuższa animacja zanikania
+                    durationMillis = 1500,
                     easing = FastOutSlowInEasing
                 )
             },
             label = "indicator_alpha"
         )
         
-        // Animacja pulsacji koloru kropki (sinusoidalna)
         val infiniteTransition = rememberInfiniteTransition(label = "pulse")
         val pulseProgress by infiniteTransition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
                 animation = tween(
-                    durationMillis = 2000, // Pełny cykl pulsacji: 2 sekundy
+                    durationMillis = 2000,
                     easing = LinearEasing
                 ),
                 repeatMode = RepeatMode.Restart
@@ -1448,36 +1383,27 @@ class ControllerActivity: ComponentActivity() {
             label = "pulse_progress"
         )
         
-        // Oblicz pulsujący kolor używając sinusa
-        // Sinus od 0 do 2π daje wartości od -1 do 1, więc normalizujemy do 0-1
-        val pulseFactor = (sin(pulseProgress * 2f * PI.toFloat()) + 1f) / 2f // 0.0 do 1.0
-        
-        // Lerp między bazowym kolorem a jaśniejszym odcieniem
-        // Zwiększamy wahanie - użyjemy większego współczynnika (0.5 zamiast 0.3)
+        val pulseFactor = (sin(pulseProgress * 2f * PI.toFloat()) + 1f) / 2f
         val lighterColor = Color(
             red = (baseColor.red + (1f - baseColor.red) * 0.5f).coerceIn(0f, 1f),
             green = (baseColor.green + (1f - baseColor.green) * 0.5f).coerceIn(0f, 1f),
             blue = (baseColor.blue + (1f - baseColor.blue) * 0.5f).coerceIn(0f, 1f),
             alpha = baseColor.alpha
         )
-        // Dodatkowo ciemniejszy odcień dla większego kontrastu
         val darkerColor = Color(
             red = (baseColor.red * 0.7f).coerceIn(0f, 1f),
             green = (baseColor.green * 0.7f).coerceIn(0f, 1f),
             blue = (baseColor.blue * 0.7f).coerceIn(0f, 1f),
             alpha = baseColor.alpha
         )
-        // Pulsacja między ciemniejszym a jaśniejszym odcieniem
         val pulseColor = lerp(darkerColor, lighterColor, pulseFactor)
         
-        // Ukryj całkowicie gdy alpha = 0
         if (alpha > 0f) {
             Box(
                 modifier = modifier
                     .alpha(alpha)
                     .background(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f * alpha), // Zastosuj alpha również do tła
-                        RoundedCornerShape(8.dp)
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f * alpha),                        RoundedCornerShape(8.dp)
                     )
                     .padding(8.dp)
             ) {
@@ -1493,8 +1419,7 @@ class ControllerActivity: ComponentActivity() {
                     Text(
                         text = text,
                         fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha), // Zastosuj alpha do tekstu
-                        fontWeight = FontWeight.Medium
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -1514,7 +1439,6 @@ class ControllerActivity: ComponentActivity() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
-            // Lista przycisków: stan, tekst, ikona, kształt
             val buttons = listOf(
                 Triple(2, "Góra", Icons.Default.ArrowUpward),
                 Triple(1, "Stop", painterResource(id = R.drawable.stop)),
@@ -1538,7 +1462,6 @@ class ControllerActivity: ComponentActivity() {
                         .weight(1f)
                 )
 
-                // Dodaj border między przyciskami, oprócz ostatniego
                 if (index < buttons.size - 1) {
                     Box(
                         modifier = Modifier
@@ -1556,8 +1479,7 @@ class ControllerActivity: ComponentActivity() {
         currentState: Int,
         stateValue: Int,
         text: String,
-        icon: Any, // może być ImageVector lub Painter
-        shape: Shape,
+        icon: Any,        shape: Shape,
         onClick: () -> Unit,
         modifier: Modifier = Modifier
     ) {
@@ -1566,9 +1488,9 @@ class ControllerActivity: ComponentActivity() {
             modifier = modifier.fillMaxHeight(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (currentState == stateValue)
-                    MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
+                    MaterialTheme.colorScheme.primary
                 else
-                    MaterialTheme.colorScheme.surfaceVariant // Ujednolicone z tłem panelu
+                    MaterialTheme.colorScheme.surfaceVariant
             ),
             shape = shape,
             contentPadding = PaddingValues(vertical = 12.dp)
@@ -1583,18 +1505,18 @@ class ControllerActivity: ComponentActivity() {
                         contentDescription = text,
                         modifier = Modifier.size(24.dp),
                         tint = if (currentState == stateValue)
-                            MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
+                            MaterialTheme.colorScheme.onPrimary
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant // Ujednolicone z kolorem tekstu na surfaceVariant
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     is Painter -> Icon(
                         painter = icon,
                         contentDescription = text,
                         modifier = Modifier.size(24.dp),
                         tint = if (currentState == stateValue)
-                            MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
+                            MaterialTheme.colorScheme.onPrimary
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant // Ujednolicone z kolorem tekstu na surfaceVariant
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -1602,9 +1524,9 @@ class ControllerActivity: ComponentActivity() {
                     text = text,
                     fontSize = 12.sp,
                     color = if (currentState == stateValue)
-                        MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
+                        MaterialTheme.colorScheme.onPrimary
                     else
-                        MaterialTheme.colorScheme.onSurfaceVariant // Ujednolicone z kolorem tekstu na surfaceVariant
+                        MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -67,39 +67,33 @@ fun FullScreenPopup(
     val textColor = MaterialTheme.colorScheme.onBackground
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    // Obserwuj wartości z managera
     val managerPoiIndex by POIWindowStateManager.currentPoiIndex.collectAsState()
     val managerImageIndex by POIWindowStateManager.currentImageIndex.collectAsState()
     val managerPoiId by POIWindowStateManager.currentPoiId.collectAsState()
-    
-    // Inicjalizuj manager tylko raz przy pierwszym otwarciu lub gdy poiId się zmienia
+
     LaunchedEffect(poiId, poiList.size) {
         POIWindowStateManager.initializeIfNeeded(poiId, poiList.size)
     }
-    
-    // Waliduj indeks z managera tylko gdy lista się zmienia
+
     LaunchedEffect(poiList.size) {
         if (poiList.isNotEmpty() && managerPoiIndex >= poiList.size) {
             POIWindowStateManager.updatePoiIndex(0)
         }
     }
-    
-    // Waliduj indeks z managera względem aktualnej listy
+
     val currentIndex = if (poiList.isEmpty()) {
         0
     } else {
         managerPoiIndex.coerceIn(0, poiList.size - 1)
     }
-    
-    // Oblicz currentPoi z currentIndex
+
     val currentPoi = poiList.getOrNull(currentIndex) ?: POIObject(
         id = 0,
         missionId = 0,
         lon = 0.0,
         lat = 0.0
     )
-    
-    // Parsuj pictures do listy URL
+
     val picturesList = remember(currentPoi.pictures) {
         if (currentPoi.pictures.isNullOrBlank()) {
             emptyList()
@@ -113,16 +107,14 @@ fun FullScreenPopup(
             }
         }
     }
-    
-    // Gdy zmienia się POI, resetuj indeks zdjęcia i zaktualizuj currentPoiId w managerze
+
     LaunchedEffect(currentPoi.id) {
         if (currentPoi.id != managerPoiId) {
             POIWindowStateManager.updatePoiId(currentPoi.id)
             POIWindowStateManager.updateImageIndex(0)
         }
     }
-    
-    // Użyj indeksu zdjęcia bezpośrednio z managera
+
     val currentImageIndex = managerImageIndex
     val currentImageUrl = picturesList.getOrNull(currentImageIndex)
 
@@ -144,12 +136,10 @@ fun FullScreenPopup(
             )
         } else {
             Row(Modifier.fillMaxSize()) {
-                // Sekcja ze zdjęciem - zajmuje całą dostępną przestrzeń minus szerokość ControlPanel
-                // Zdjęcie używa całego ekranu (bez systemBarsPadding)
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .weight(1f) // Zajmuje resztę przestrzeni
+                        .weight(1f)
                         .border(2.dp, if (darkTheme) DarkImageFrame else LightImageFrame)
                 ) {
                     if (currentImageUrl != null) {
@@ -157,7 +147,6 @@ fun FullScreenPopup(
                             images = picturesList,
                             currentIndex = currentImageIndex,
                             onIndexChange = { newIndex ->
-                                // Cykliczne przechodzenie między zdjęciami
                                 val finalIndex = when {
                                     newIndex < 0 -> picturesList.lastIndex
                                     newIndex >= picturesList.size -> 0
@@ -169,7 +158,6 @@ fun FullScreenPopup(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        // Brak obrazów - pokaż placeholder
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -184,8 +172,7 @@ fun FullScreenPopup(
                         }
                     }
                 }
-                
-                // Panel kontrolny - stała szerokość 280dp jak wcześniej
+
                 ControlPanel(
                     currentPoi = currentPoi,
                     currentImageIndex = currentImageIndex,
@@ -213,7 +200,7 @@ fun FullScreenPopup(
                     },
                     textColor = textColor,
                     surfaceColor = surfaceColor,
-                    modifier = Modifier.width(280.dp), // Stała szerokość jak wcześniej
+                    modifier = Modifier.width(280.dp),
                     onClose = onClose
                 )
             }
@@ -230,12 +217,10 @@ fun FullScreenPopup(
                 onSaveName = {
                     onSaveName(currentPoi.id, nameValue.text)
                     isEditingName = false
-                    // currentPoi jest obliczany z poiList, więc zaktualizuje się automatycznie po zapisaniu
                 },
                 onSaveDescription = {
                     onSaveDescription(currentPoi.id, descriptionValue.text)
                     isEditingDescription = false
-                    // currentPoi jest obliczany z poiList, więc zaktualizuje się automatycznie po zapisaniu
                 },
                 textColor = textColor,
                 surfaceColor = surfaceColor
@@ -268,7 +253,7 @@ private fun ExpandedImageView(
         AsyncImage(
             model = imageUrl,
             contentDescription = null,
-            contentScale = ContentScale.Fit, // Zachowaj aspect ratio, wypełnij maksymalnie dostępną przestrzeń
+            contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
@@ -308,14 +293,10 @@ private fun SwipeableImageSection(
     var targetIndex by remember { mutableIntStateOf(currentIndex) }
     val coroutineScope = rememberCoroutineScope()
     val imageUrl = images.getOrNull(currentIndex) ?: return
-    
-    // Animatable do kontroli animacji - pozwala na snapTo i animateTo
+
     val animatedOffset = remember { Animatable(0f) }
-    
-    // Użyj animowanej wartości podczas animacji, w przeciwnym razie użyj dragOffsetX
     val displayOffsetX = if (isAnimating) animatedOffset.value else dragOffsetX
-    
-    // Resetuj offset gdy zmienia się indeks zdjęcia (np. przez strzałki)
+
     LaunchedEffect(currentIndex) {
         if (!isAnimating && targetIndex == currentIndex) {
             dragOffsetX = 0f
@@ -333,7 +314,6 @@ private fun SwipeableImageSection(
                 
                 detectDragGestures(
                     onDragStart = { offset ->
-                        // Zatrzymaj animację jeśli trwa i zsynchronizuj pozycję
                         if (isAnimating) {
                             dragOffsetX = animatedOffset.value
                             coroutineScope.launch {
@@ -344,18 +324,14 @@ private fun SwipeableImageSection(
                         }
                     },
                     onDrag = { change, dragAmount ->
-                        // Zawsze pozwól na przesuwanie (cykliczne przechodzenie)
                         dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-containerWidth, containerWidth)
                     },
                     onDragEnd = {
-                        // Po zakończeniu przeciągania sprawdź czy przesunięcie było wystarczające
-                        val threshold = containerWidth * 0.25f // 25% szerokości ekranu
+                        val threshold = containerWidth * 0.25f
                         
                         when {
                             dragOffsetX > threshold -> {
-                                // Przesuń w prawo - poprzednie zdjęcie (lub ostatnie jeśli jesteśmy na pierwszym)
                                 targetIndex = if (currentIndex > 0) currentIndex - 1 else images.lastIndex
-                                // Rozpocznij animację od aktualnej pozycji dragOffsetX do końca w prawo
                                 isAnimating = true
                                 coroutineScope.launch {
                                     animatedOffset.snapTo(dragOffsetX) // Ustaw początkową wartość
@@ -366,18 +342,14 @@ private fun SwipeableImageSection(
                                             easing = FastOutSlowInEasing
                                         )
                                     )
-                                    // Po zakończeniu animacji zmień indeks
                                     onIndexChange(targetIndex)
-                                    // Zresetuj wartości
                                     dragOffsetX = 0f
                                     animatedOffset.snapTo(0f)
                                     isAnimating = false
                                 }
                             }
                             dragOffsetX < -threshold -> {
-                                // Przesuń w lewo - następne zdjęcie (lub pierwsze jeśli jesteśmy na ostatnim)
                                 targetIndex = if (currentIndex < images.size - 1) currentIndex + 1 else 0
-                                // Rozpocznij animację od aktualnej pozycji dragOffsetX do końca w lewo
                                 isAnimating = true
                                 coroutineScope.launch {
                                     animatedOffset.snapTo(dragOffsetX) // Ustaw początkową wartość
@@ -388,16 +360,13 @@ private fun SwipeableImageSection(
                                             easing = FastOutSlowInEasing
                                         )
                                     )
-                                    // Po zakończeniu animacji zmień indeks
                                     onIndexChange(targetIndex)
-                                    // Zresetuj wartości
                                     dragOffsetX = 0f
                                     animatedOffset.snapTo(0f)
                                     isAnimating = false
                                 }
                             }
                             else -> {
-                                // Za słabo przesunięte - animuj z powrotem do środka
                                 targetIndex = currentIndex
                                 isAnimating = true
                                 coroutineScope.launch {
@@ -409,7 +378,6 @@ private fun SwipeableImageSection(
                                             easing = FastOutSlowInEasing
                                         )
                                     )
-                                    // Po zakończeniu animacji zresetuj wartości
                                     dragOffsetX = 0f
                                     animatedOffset.snapTo(0f)
                                     isAnimating = false
@@ -420,7 +388,6 @@ private fun SwipeableImageSection(
                 )
             }
     ) {
-        // Wyświetl aktualne zdjęcie z przesunięciem
         AsyncImage(
             model = imageUrl,
             contentDescription = null,
@@ -431,16 +398,13 @@ private fun SwipeableImageSection(
                     translationX = displayOffsetX
                 )
         )
-        
-        // Jeśli przesuwamy, pokaż podgląd następnego/poprzedniego zdjęcia
+
         if (displayOffsetX != 0f && containerWidth > 0f) {
             val nextIndex = when {
                 displayOffsetX > 0 -> {
-                    // Przesuwamy w prawo - pokaż poprzednie (lub ostatnie jeśli jesteśmy na pierwszym)
                     if (currentIndex > 0) currentIndex - 1 else images.lastIndex
                 }
                 displayOffsetX < 0 -> {
-                    // Przesuwamy w lewo - pokaż następne (lub pierwsze jeśli jesteśmy na ostatnim)
                     if (currentIndex < images.size - 1) currentIndex + 1 else 0
                 }
                 else -> null
@@ -449,10 +413,8 @@ private fun SwipeableImageSection(
             val nextImageUrl = nextIndex?.let { images.getOrNull(it) }
             if (nextImageUrl != null) {
                 val nextOffset = if (displayOffsetX > 0) {
-                    // Pokazuj poprzednie zdjęcie po lewej stronie
                     displayOffsetX - containerWidth
                 } else {
-                    // Pokazuj następne zdjęcie po prawej stronie
                     displayOffsetX + containerWidth
                 }
                 
@@ -468,8 +430,7 @@ private fun SwipeableImageSection(
                 )
             }
         }
-        
-        // Przycisk FAB do pełnoekranowego podglądu (bez tła, tylko ikona) - górny prawy róg
+
         FloatingActionButton(
             onClick = onExpand,
             modifier = Modifier
@@ -483,7 +444,7 @@ private fun SwipeableImageSection(
                 Icons.Default.Fullscreen,
                 contentDescription = "Fullscreen",
                 tint = Color.White,
-                modifier = Modifier.size(32.dp) // Większa ikona
+                modifier = Modifier.size(32.dp)
             )
         }
     }
@@ -515,7 +476,6 @@ private fun ControlPanel(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                // Przycisk zamknięcia w górnym rogu
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -558,8 +518,7 @@ private fun ControlPanel(
                     )
                 }
             }
-            
-            // Wskaźnik zdjęć (np. "Zdjęcie 1/3")
+
             if (totalImages > 0) {
                 Text(
                     text = "Zdjęcie ${currentImageIndex + 1}/$totalImages",

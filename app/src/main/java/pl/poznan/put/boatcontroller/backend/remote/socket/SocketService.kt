@@ -36,7 +36,7 @@ class SocketService {
                     connect(ip, port)
                 } catch (e: Exception) {
                     connectionState.value = false
-                    Log.w("SocketService", "⚠️ Connection lost, retrying in 3s...", e)
+                    Log.w("SocketService", "Connection lost, retrying in 3s...", e)
                     delay(3000)
                 }
             }
@@ -52,7 +52,7 @@ class SocketService {
             reader = BufferedReader(InputStreamReader(socket!!.getInputStream()))
 
             connectionState.value = true
-            Log.d("SocketService", "✅ Connected to $ip:$port")
+            Log.d("SocketService", "Connected to $ip:$port")
 
             // Pętla czytania - blokuje dopóki połączenie jest aktywne
             while (isRunning && socket?.isConnected == true) {
@@ -70,7 +70,7 @@ class SocketService {
 
     suspend fun send(msg: String) {
         if (!isRunning || socket?.isConnected != true) {
-            Log.w("SocketService", "❌ Cannot send - not connected: $msg")
+            Log.w("SocketService", "Cannot send - not connected: $msg")
             return
         }
         writeMutex.withLock {
@@ -81,7 +81,7 @@ class SocketService {
                     writer?.flush()
                 }
             } catch (e: Exception) {
-                Log.e("SocketService", "❌ Send error: $msg", e)
+                Log.e("SocketService", "Send error: $msg", e)
                 e.printStackTrace()
             }
         }

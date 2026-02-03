@@ -153,7 +153,6 @@ class WaypointActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Odśwież listę POI gdy Activity wraca na ekran (np. po zapisaniu POI z ControllerActivity)
         waypointVm.loadMission()
     }
 
@@ -274,11 +273,11 @@ class WaypointActivity : ComponentActivity() {
                                 currentMapMode = mapMode,
                                 onClick = {
                                     waypointVm.goToHome()
-//                                    waypointVm.stopShipSimulation()
+
 
                                     CoroutineScope(Dispatchers.Main).launch {
                                         delay(300)
-//                                        waypointVm.startShipSimulation()
+
                                     }
                                 },
                                 isEnabled = currentShipDirection == ShipDirection.DEFAULT
@@ -379,9 +378,7 @@ class WaypointActivity : ComponentActivity() {
         val openPOIDialog by waypointVm.openPOIDialog.collectAsState()
         val poiId by waypointVm.poiId.collectAsState()
         val currentBatteryLevel = batteryLevel ?: 100
-        
-        // Obsługa niskiej baterii - warning przy 20%, error przy 10%
-        // Używamy remember aby nie pokazywać tego samego warningu wielokrotnie
+
         var lastBatteryWarning = remember { mutableStateOf<Int?>(null) }
         LaunchedEffect(currentBatteryLevel) {
             when {
@@ -400,7 +397,6 @@ class WaypointActivity : ComponentActivity() {
                     lastBatteryWarning.value = currentBatteryLevel
                 }
                 currentBatteryLevel > 20 -> {
-                    // Reset gdy bateria wzrośnie powyżej 20%
                     lastBatteryWarning.value = null
                 }
             }
@@ -418,16 +414,13 @@ class WaypointActivity : ComponentActivity() {
                                 waypointVm.saveCameraPosition(location.latitude, location.longitude, 13.0)
                                 Log.d("PHONE_LOCATION", "Lat: ${location.latitude}, Lon: ${location.longitude}")
                             } else {
-                                // Brak aktualnej lokalizacji telefonu – nie pokazujemy operatora
                                 Log.d("PHONE_LOCATION", "No phone location available (null)")
                             }
                         }
                         .addOnFailureListener { e ->
-                            // Błąd pobierania lokalizacji – nie pokazujemy operatora
                             Log.d("PHONE_LOCATION", "Error fetching phone location: ${e.message}")
                         }
                 } catch (_: SecurityException) {
-                    // Brak uprawnień – nie pokazujemy operatora
                     Log.d("PHONE_LOCATION", "SecurityException – location permission missing")
                 }
             }
@@ -488,14 +481,14 @@ class WaypointActivity : ComponentActivity() {
                 val bitmap = getOrCreateWaypointBitmap(wp.no, context)
                 addWaypointBitmapToStyle(wp.no, bitmap, style)
             }
-            // Aktualizuj tylko waypointy i połączenia, NIE pozycję łódki
+            
             style.getSourceAs<GeoJsonSource>("waypoint-connections-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getConnectionLinesFeature()))
             style.getSourceAs<GeoJsonSource>("waypoint-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getWaypointsFeature()))
         }
         
-        // Osobny LaunchedEffect dla pozycji łódki - aktualizuje się tylko gdy pozycja się zmienia
+        
         LaunchedEffect(shipPosition) {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
@@ -508,7 +501,7 @@ class WaypointActivity : ComponentActivity() {
             val mapboxMap = map ?: return@LaunchedEffect
             val style = mapboxMap.style ?: return@LaunchedEffect
 
-            // Aktualizuj tylko POI, NIE pozycję łódki
+            
             style.getSourceAs<GeoJsonSource>("poi-source")
                 ?.setGeoJson(FeatureCollection.fromFeatures(waypointVm.getPoiFeature()))
         }
@@ -532,7 +525,7 @@ class WaypointActivity : ComponentActivity() {
                     .fillMaxSize()
                     .systemBarsPadding()
             ) {
-                // InfoPopup dla warningów i błędów
+                
                 InfoPopup(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -671,8 +664,8 @@ class WaypointActivity : ComponentActivity() {
                                 ?.getStringProperty("no")
                                 ?.toIntOrNull()
 
-                            // Jeśli jakaś flaga jest zaznaczona do przeniesienia, to niezależnie od trybu
-                            // następne kliknięcie ustawia jej nową pozycję.
+                            
+                            
                             val pendingMoveNo = waypointToMoveNo
                             if (pendingMoveNo != null) {
                                 waypointVm.moveWaypoint(pendingMoveNo, latLng.longitude, latLng.latitude)
@@ -701,18 +694,15 @@ class WaypointActivity : ComponentActivity() {
                                 }
 
                                 MapMode.Waypoint.Move -> {
-                                    val toMoveNo = waypointToMoveNo
-                                    if (toMoveNo == null) {
-                                        if (clickedNo != null && waypointVm.getWaypointByNo(clickedNo)?.isCompleted == false) {
-                                            waypointVm.setWaypointToMoveNo(clickedNo)
+                                    if (clickedNo != null && waypointVm.getWaypointByNo(clickedNo)?.isCompleted == false) {
+                                        waypointVm.setWaypointToMoveNo(clickedNo)
 
-                                            val bitmap = waypointVm.waypointBitmaps.value[clickedNo]!!
-                                            val selectedBitmap = bitmap.scale(
-                                                (bitmap.width * 1.2f).toInt(),
-                                                (bitmap.height * 1.2f).toInt()
-                                            )
-                                            style.addImage("waypoint-icon-$clickedNo", selectedBitmap)
-                                        }
+                                        val bitmap = waypointVm.waypointBitmaps.value[clickedNo]!!
+                                        val selectedBitmap = bitmap.scale(
+                                            (bitmap.width * 1.2f).toInt(),
+                                            (bitmap.height * 1.2f).toInt()
+                                        )
+                                        style.addImage("waypoint-icon-$clickedNo", selectedBitmap)
                                     }
                                     true
                                 }
@@ -877,11 +867,8 @@ class WaypointActivity : ComponentActivity() {
 
     @Preview(showBackground = true)
     @Composable
-    fun PreviewPhoneAnimationScreen() {
+    fun PreviewPhoneAnimationScreen() {}
 
-    }
-
-    // Canvas for tests in preview without compiling whole app
     @Preview(showBackground = true)
     @Composable
     fun WaypointBitmapPreview() {
