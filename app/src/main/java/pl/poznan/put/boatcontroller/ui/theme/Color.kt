@@ -15,7 +15,7 @@ val DarkOnSurface = Color(0xFFE0E0E0) // Jasny tekst na ciemnym tle
 // Light theme colors - nie maksymalnie biały
 val LightBackground = Color(0xFFE0E0E0) // Szary zamiast białego
 val LightSurface = Color(0xFFE0E0E0)
-val LightPlaceholder = Color(0xFFE0E0E0)
+val LightPlaceholder = Color(0xFFD0D0D0) // Lekko ciemniejszy dla czytelnych paneli
 val LightOnSurface = Color(0xFF1C1B1F) // Ciemny tekst na jasnym tle
 
 // POIWindow specific colors
