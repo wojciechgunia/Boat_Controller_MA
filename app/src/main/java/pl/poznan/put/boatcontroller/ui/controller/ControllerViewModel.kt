@@ -244,7 +244,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                     is SocketEvent.PositionActualisation -> {
                         // lat/lon już jako Double, speed z cm/s na m/s
                         val speedMs = event.speed / 100.0 // cm/s -> m/s
-                        Log.d("ControllerViewModel", "📍 PA received: lat=${event.lat}, lon=${event.lon}, speed=$speedMs m/s, sNum=${event.sNum}")
                         mapUpdate(event.lat, event.lon, speedMs.toFloat())
                     }
                     is SocketEvent.SensorInformation -> {
@@ -355,7 +354,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                         sNum = sNum
                     )
                 )
-                Log.d("ControllerViewModel", "📤 SS BURST: left=$leftConverted, right=$rightConverted, winch=$winch, sNum=$sNum (${it + 1}/$ssBurstCount)")
                 
                 // Czekaj przed następnym wysłaniem (tylko jeśli to nie ostatnia iteracja)
                 if (it < ssBurstCount - 1) {
@@ -391,7 +389,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
                         sNum = sNum
                     )
                 )
-                Log.d("ControllerViewModel", "💓 SS KEEP-ALIVE: left=$lastSentLeft, right=$lastSentRight, winch=$lastSentWinch, sNum=$sNum")
                 
                 delay(ssKeepAliveIntervalMs)
             }
@@ -401,7 +398,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     fun sendSpeed(left: Int, right: Int) {
         viewModelScope.launch {
             _currentSpeed.value = ((left + right) / 2.0).toFloat()
-            Log.d("ControllerViewModel", "🚢 sendSpeed called: left=$left, right=$right, winch=${winchState.value}")
             // Wyślij z interwałem
             sendSpeedWithInterval(left, right, winchState.value)
         }
@@ -461,7 +457,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getPoiFeature(): List<Feature> {
-        Log.d("POI", _poiPositions.value.toString())
         return _poiPositions.value.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())

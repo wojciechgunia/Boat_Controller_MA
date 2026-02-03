@@ -601,7 +601,6 @@ class WaypointViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun getPoiFeature(): List<Feature> {
-        Log.d("POI", _poiPositions.value.toString())
         return _poiPositions.value.map {
             Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
                 addStringProperty("id", it.id.toString())

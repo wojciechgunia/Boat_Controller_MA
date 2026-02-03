@@ -42,19 +42,17 @@ object SocketRepository {
 
         CoroutineScope(Dispatchers.IO).launch {
             service.incomingRaw.collect { raw ->
-                Log.d("SocketRepository", "📥 Raw message received: $raw")
                 val event = SocketParser.parse(raw)
                 if (event != null) {
                     when (event) {
                         is SocketEvent.PositionActualisation -> {
-                            val speedMs = event.speed / 100.0
-                            Log.d("SocketRepository", "📍 Parsed PA: lat=${event.lat}, lon=${event.lon}, speed=$speedMs m/s, sNum=${event.sNum}")
+                            // Logs removed for performance
                         }
                         is SocketEvent.SensorInformation -> {
-                            Log.d("SocketRepository", "📊 Parsed SI: accel=(${event.accelX/100.0},${event.accelY/100.0},${event.accelZ/100.0}), gyro=(${event.gyroX/100.0},${event.gyroY/100.0},${event.gyroZ/100.0}), mag=(${event.magX/100.0},${event.magY/100.0},${event.magZ/100.0}), angles=(${event.angleX},${event.angleY},${event.angleZ}), depth=${event.depth/100.0}")
+                            // Logs removed for performance
                         }
                         else -> {
-                            Log.d("SocketRepository", "📨 Parsed event: ${event::class.simpleName}")
+                            // Logs removed for performance
                         }
                     }
                     handleIncomingEvent(event)
@@ -87,7 +85,6 @@ object SocketRepository {
 
     suspend fun send(command: SocketCommand) {
         val encoded = encodeCommand(command)
-        Log.d("SocketRepository", "📤 Sending command: ${command::class.simpleName} -> $encoded")
         val requiresAck = when (command) {
             is SocketCommand.SetMission, is SocketCommand.SetAction -> true
             else -> false

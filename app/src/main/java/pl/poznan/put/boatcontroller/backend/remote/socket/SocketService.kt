@@ -58,7 +58,6 @@ class SocketService {
             while (isRunning && socket?.isConnected == true) {
                 val line = reader?.readLine()
                 if (line != null) {
-                    Log.d("SocketService", "📥 RECV: $line")
                     incomingRaw.emit(line)
                 } else {
                     throw IOException("Server closed connection")
@@ -80,7 +79,6 @@ class SocketService {
                     writer?.write(msg)
                     writer?.write("\n")
                     writer?.flush()
-                    Log.d("SocketService", "📤 SEND: $msg")
                 }
             } catch (e: Exception) {
                 Log.e("SocketService", "❌ Send error: $msg", e)
