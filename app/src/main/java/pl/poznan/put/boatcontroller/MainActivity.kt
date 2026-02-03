@@ -86,7 +86,6 @@ import com.google.accompanist.permissions.shouldShowRationale
 import pl.poznan.put.boatcontroller.dataclass.MissionListItemDto
 import pl.poznan.put.boatcontroller.dataclass.ShipOption
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
-import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
 import pl.poznan.put.boatcontroller.ui.theme.ErrorBackground
 import pl.poznan.put.boatcontroller.ui.theme.ErrorText
 import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
@@ -288,8 +287,8 @@ fun MenuButton(
         shape = RoundedCornerShape(10.dp),
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
-            containerColor = PrimaryBlue,
-            contentColor = Color.White
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
         ),
     ) {
         Column{
@@ -508,7 +507,7 @@ fun LoginForm(
                     .height(50.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryBlue,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                 ),
                 enabled = formEnabled
@@ -568,8 +567,8 @@ fun LoginForm(
                     checked = mainVm.isRemembered,
                     onCheckedChange = { if (formEnabled) mainVm.updateIsRemembered(it) },
                     colors = CheckboxDefaults.colors(
-                        checkedColor = PrimaryBlue,
-                        checkmarkColor = Color.White,
+                        checkedColor = MaterialTheme.colorScheme.primary,
+                        checkmarkColor = MaterialTheme.colorScheme.onPrimary,
                         uncheckedColor = Color.Gray
                     )
                 )
@@ -606,7 +605,7 @@ fun LoginForm(
                     .height(60.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryBlue,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                  ),
              enabled = formEnabled && mainVm.password != "" && mainVm.username != "" && mainVm.selectedShip.name != ""
@@ -760,7 +759,7 @@ fun SettingsPanel(mainVm: MainViewModel, visible: Boolean, onClose: () -> Unit) 
                     .padding(horizontal = 16.dp)
                     .height(60.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryBlue,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(10.dp)) {
@@ -809,7 +808,7 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
                 .padding(horizontal = 16.dp)
                 .height(60.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = PrimaryBlue,
+                containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White
             ),
             shape = RoundedCornerShape(10.dp)
@@ -830,19 +829,19 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
         ) {
             Row {
                 Text("Welcome, ", style = MaterialTheme.typography.headlineMedium)
-                Text(mainVm.username, color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
+                Text(mainVm.username, color=MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium)
             }
             Row {
                 Text("Current boat: ", style = MaterialTheme.typography.headlineMedium)
-                Text(mainVm.selectedShip.name, color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
+                Text(mainVm.selectedShip.name, color=MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium)
             }
             Row {
                 Text("Your role: ", style = MaterialTheme.typography.headlineMedium)
-                Text(if(mainVm.isCaptain) "Captain" else "Observer", color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
+                Text(if(mainVm.isCaptain) "Captain" else "Observer", color=MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium)
             }
             Row {
                 Text("Mission: ", style = MaterialTheme.typography.headlineMedium)
-                Text(if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-", color=PrimaryBlue, style = MaterialTheme.typography.headlineMedium)
+                Text(if(mainVm.selectedMission.id!=-1) mainVm.selectedMission.name else "-", color=MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.headlineMedium)
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -944,7 +943,7 @@ fun MissionForm(mainVm: MainViewModel, onChangeSelectedMission: () -> Unit, onDi
                 .height(60.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = PrimaryBlue,
+                containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White
             ),
             enabled = selectedMissionLocal.id != -1

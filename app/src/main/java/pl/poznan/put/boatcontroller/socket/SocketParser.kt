@@ -66,7 +66,6 @@ object SocketParser {
         
         // Parsuj wszystkie wartości (powinno być 12 wartości)
         if (magData.size < 12) {
-            // Jeśli brakuje danych, wypełnij zerami (jako Int, nie "0.0")
             val filledData = magData.toMutableList()
             while (filledData.size < 12) {
                 filledData.add("0")
@@ -78,31 +77,31 @@ object SocketParser {
     }
     
     private fun parseSensorData(magData: List<String>, depthStr: String): SocketEvent.SensorInformation {
-        // Format: wartości są w formacie Int
+        // Format: wartości są w formacie Int (kompresja/dekompresja)
         // - accel/gyro/mag/depth: *100 dla precyzji do 2 miejsc po przecinku
         // - kąty: jako Int (bez miejsc po przecinku)
         
-        // Akcelerometr (g) - indeksy 0, 1, 2 (*100)
+        // Akcelerometr (g)
         val accelX = magData[0].toIntOrNull() ?: 0
         val accelY = magData[1].toIntOrNull() ?: 0
         val accelZ = magData[2].toIntOrNull() ?: 0
         
-        // Żyroskop (deg/s) - indeksy 3, 4, 5 (*100)
+        // Żyroskop (deg/s)
         val gyroX = magData[3].toIntOrNull() ?: 0
         val gyroY = magData[4].toIntOrNull() ?: 0
         val gyroZ = magData[5].toIntOrNull() ?: 0
         
-        // Magnetometr (µT) - indeksy 6, 7, 8 (*100)
+        // Magnetometr (µT)
         val magX = magData[6].toIntOrNull() ?: 0
         val magY = magData[7].toIntOrNull() ?: 0
         val magZ = magData[8].toIntOrNull() ?: 0
         
-        // Kąty (deg) - indeksy 9, 10, 11 (jako Int, bez *100)
+        // Kąty (deg)
         val angleX = magData[9].toIntOrNull() ?: 0
         val angleY = magData[10].toIntOrNull() ?: 0
         val angleZ = magData[11].toIntOrNull() ?: 0
         
-        // Głębokość (m) - może być "todo" lub liczba jako Int (*100)
+        // Głębokość (m)
         val depth = when {
             depthStr.equals("todo", ignoreCase = true) -> 0
             else -> depthStr.toIntOrNull() ?: 0

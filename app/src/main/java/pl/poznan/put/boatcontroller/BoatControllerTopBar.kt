@@ -17,15 +17,15 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoatControllerTopBar(content: @Composable () -> Unit) {
-    val topAppBarColor = PrimaryBlue
+    val topAppBarColor = MaterialTheme.colorScheme.primary
 
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true

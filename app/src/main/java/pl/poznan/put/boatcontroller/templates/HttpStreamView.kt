@@ -28,9 +28,12 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,6 +52,7 @@ import pl.poznan.put.boatcontroller.socket.HttpStreamRepository
  * @param errorMessage Komunikat błędu (null gdy brak błędu)
  * @param label Etykieta wyświetlana w komunikatach (np. "kamera", "sonar")
  * @param config Konfiguracja streamu (używana do weryfikacji i rejestracji)
+ * @param onTap Callback wywoływany gdy użytkownik kliknie w WebView (opcjonalny)
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -57,7 +61,8 @@ fun HttpStreamView(
     connectionState: ConnectionState,
     errorMessage: String?,
     label: String = "device",
-    config: HttpStreamConfig? = null
+    config: HttpStreamConfig? = null,
+    onTap: (() -> Unit)? = null
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     
@@ -192,6 +197,64 @@ fun HttpStreamView(
                         }
                         
                         setBackgroundColor(0x00000000)
+                        
+                        // Obsługa kliknięć w WebView - wywołuje callback onTap gdy użytkownik kliknie
+                        // w WebView (ale nie w interaktywne elementy jak przyciski)
+                        if (onTap != null) {
+                            var touchDownTime = 0L
+                            var touchDownX = 0f
+                            var touchDownY = 0f
+                            
+                            setOnTouchListener { _, event ->
+                                when (event.action) {
+                                    android.view.MotionEvent.ACTION_DOWN -> {
+                                        touchDownTime = System.currentTimeMillis()
+                                        touchDownX = event.x
+                                        touchDownY = event.y
+                                        false // Przekaż event dalej do WebView
+                                    }
+                                    android.view.MotionEvent.ACTION_UP -> {
+                                        val touchDuration = System.currentTimeMillis() - touchDownTime
+                                        val touchDistance = kotlin.math.sqrt(
+                                            (event.x - touchDownX) * (event.x - touchDownX) + 
+                                            (event.y - touchDownY) * (event.y - touchDownY)
+                                        )
+                                        
+                                        // Jeśli to był krótki tap (mniej niż 200ms) i bez dużego ruchu (mniej niż 10px)
+                                        // oraz nie trafił w interaktywny element, wywołaj callback
+                                        if (touchDuration < 200 && touchDistance < 10f) {
+                                            // Sprawdź czy kliknięcie trafiło w interaktywny element używając JavaScript
+                                            evaluateJavascript(
+                                                """
+                                                (function() {
+                                                    var element = document.elementFromPoint(${event.x}, ${event.y});
+                                                    if (element) {
+                                                        var tag = element.tagName.toLowerCase();
+                                                        var isInteractive = tag === 'button' || 
+                                                                           tag === 'a' || 
+                                                                           tag === 'input' || 
+                                                                           tag === 'select' || 
+                                                                           tag === 'textarea' ||
+                                                                           element.onclick !== null ||
+                                                                           element.style.cursor === 'pointer';
+                                                        return isInteractive ? 'interactive' : 'non-interactive';
+                                                    }
+                                                    return 'non-interactive';
+                                                })();
+                                                """.trimIndent()
+                                            ) { result ->
+                                                // Jeśli kliknięcie nie trafiło w interaktywny element, wywołaj callback
+                                                if (result != null && result.contains("non-interactive")) {
+                                                    onTap()
+                                                }
+                                            }
+                                        }
+                                        false // Przekaż event dalej do WebView
+                                    }
+                                    else -> false // Przekaż event dalej do WebView
+                                }
+                            }
+                        }
 
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
@@ -340,7 +403,15 @@ fun HttpStreamView(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface),
+                    .background(MaterialTheme.colorScheme.surface)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                // Kliknięcie w ekran (ale nie w przycisk Refresh) - wywołaj callback
+                                onTap?.invoke()
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -369,7 +440,7 @@ fun HttpStreamView(
                     Button(
                         onClick = onRefresh,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
+                            containerColor = MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -377,12 +448,12 @@ fun HttpStreamView(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh",
                             modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary
+                            tint = MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Refresh",
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = MaterialTheme.colorScheme.onPrimary, // Ujednolicone z MaterialTheme
                             fontSize = 14.sp
                         )
                     }
@@ -404,10 +475,19 @@ fun HttpStreamView(
             }
         } else {
             // Uspójniony komunikat - używamy displayState który jest zsynchronizowany z ConnectionStatusIndicator
+            // To obejmuje stan Reconnecting i inne stany
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface),
+                    .background(MaterialTheme.colorScheme.surface)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                // Kliknięcie w ekran - wywołaj callback
+                                onTap?.invoke()
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(

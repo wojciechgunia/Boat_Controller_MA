@@ -128,24 +128,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    
-    /**
-     * Funkcja testowa - symuluje spadek baterii (tylko do testów UI)
-     */
-    fun simulateBatteryDecrease() {
-        val current = SocketRepository.batteryLevel.value ?: 100
-        val newLevel = (current - 5).coerceAtLeast(0)
-        SocketRepository.updateBatteryLevel(newLevel)
-        Log.d("ControllerViewModel", "🔋 Symulacja baterii: $current% -> $newLevel%")
-    }
-    
-    /**
-     * Funkcja testowa - resetuje baterię do 100% (tylko do testów UI)
-     */
-    fun resetBattery() {
-        SocketRepository.updateBatteryLevel(100)
-        Log.d("ControllerViewModel", "🔋 Reset baterii: 100%")
-    }
 
     fun mapUpdate(latitude: Double, longitude: Double, speed: Float) {
         _shipPosition.value = ShipPosition(latitude, longitude)
@@ -207,7 +189,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         observeSocket()
         observeSocketConnection()
         loadSavedMission()
-        HttpStreamRepository.startAll()
         observeHttpStreamConnections()
     }
     
@@ -515,11 +496,6 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
         _phonePosition.value = doubleArrayOf(lat, lon)
     }
 
-    fun setPhonePositionFallback() {
-        val shipPos = _shipPosition.value
-        setPhonePosition(shipPos.lat, shipPos.lon)
-    }
-
     fun setMapReady(map: MapLibreMap) {
         _mapLibreMapState.value = map
     }
@@ -594,13 +570,11 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
      * W przeciwnym razie tworzy nowy POI.
      * 
      * @param bitmap Bitmapa do zapisania (z kamery lub sonaru)
-     * @param sourceType Typ źródła ("camera" lub "sonar")
      * @param name Opcjonalna nazwa POI
      * @param description Opcjonalny opis POI
      */
     fun createPoiWithImage(
         bitmap: Bitmap?,
-        sourceType: String,
         name: String? = null,
         description: String? = null
     ) {

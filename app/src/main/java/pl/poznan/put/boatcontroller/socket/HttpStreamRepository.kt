@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import pl.poznan.put.boatcontroller.ConnectionState
 import pl.poznan.put.boatcontroller.enums.ControllerTab
+import androidx.core.graphics.createBitmap
 
 /**
  * Repository do zarządzania połączeniami HTTP stream.
@@ -21,57 +22,31 @@ import pl.poznan.put.boatcontroller.enums.ControllerTab
  * Używa jednego serwisu dla wszystkich streamów - różnią się tylko configiem.
  */
 object HttpStreamRepository {
-    // Jeden serwis dla wszystkich streamów - zmienia config w zależności od aktywnego taba
     private var streamService: HttpStreamService? = null
-    
-    // CENTRALNY STAN - aktualny aktywny tab
     private var currentActiveTab: ControllerTab = ControllerTab.NONE
-    
-    // Zapamiętaj ostatni aktywny tab przed minimalizacją (dla przywrócenia po onResume)
     private var lastActiveTabBeforePause: ControllerTab = ControllerTab.NONE
-    
-    // Śledzenie WebView - faktyczne istnienie WebView i requesty
-    // Używamy WeakReference aby uniknąć memory leak
+
     private var activeWebViewRef: WeakReference<WebView>? = null
     private var activeConfig: HttpStreamConfig? = null
-    
-    // Helper do pobierania WebView z WeakReference
+
     private val activeWebView: WebView?
         get() = activeWebViewRef?.get()
     private var requestCount = 0
     private var lastRequestTime = 0L
-    
-    // Jeden stan połączenia dla aktywnego streamu
+
     val connectionState = MutableSharedFlow<ConnectionState>(replay = 1)
     val errorMessage = MutableSharedFlow<String?>(replay = 1)
-    
-    // Flagi do śledzenia czy obserwujemy już stan
     private var isObservingConnection = false
     
-    init {
-        // Logowanie podsumowania co 2 sekundy
-        CoroutineScope(Dispatchers.IO).launch {
-            while (true) {
-                delay(2000)
-                logStreamStatus()
-            }
-        }
-        
-        // Usunięto monitorowanie timeoutów - HttpStreamService sam zarządza próbami połączenia
-        // (3 próby z interwałem, potem Disconnected)
-    }
-    
-    /**
-     * Uruchamia wszystkie skonfigurowane streamy (serwisy sprawdzające dostępność).
-     */
-    fun startAll() {
-        // Nie uruchamiamy serwisów z góry - uruchamiamy tylko gdy tab jest aktywny
-        // To oszczędza zasoby i dane
-    }
-    
-    /**
-     * Zwraca URL dla danego taba.
-     */
+//    init {
+//        CoroutineScope(Dispatchers.IO).launch {
+//            while (true) {
+//                delay(2000)
+//                logStreamStatus()
+//            }
+//        }
+//    }
+
     fun getUrlForTab(tab: ControllerTab): String? {
         val config = HttpStreamConfigs.getConfigForTab(tab)
         return config?.getUrl()
@@ -85,32 +60,25 @@ object HttpStreamRepository {
     fun setActiveTab(tab: ControllerTab) {
         val previousTab = currentActiveTab
         currentActiveTab = tab
-        
-        // Jeśli tab się zmienił, zniszcz stare WebView
+
         if (previousTab != tab && previousTab != ControllerTab.NONE) {
             destroyWebView()
         }
-        
-        // Jeśli nowy tab wymaga streamu, uruchom serwis
+
         if (tab == ControllerTab.SONAR || tab == ControllerTab.CAMERA) {
             val config = HttpStreamConfigs.getConfigForTab(tab)
             if (config != null) {
-                // Zatrzymaj poprzedni serwis jeśli był
                 streamService?.stop()
-                resetObservation() // Resetuj obserwację przed utworzeniem nowego serwisu
+                resetObservation()
                 
                 // Uruchom nowy serwis z odpowiednim configiem i callbackiem do pobierania aktywnego taba
-                streamService = HttpStreamService(config) { 
-                    // Callback do pobierania aktywnego taba
+                streamService = HttpStreamService(config) {
                     currentActiveTab
                 }
                 streamService?.startConnectionLoop()
-                
-                // Obserwuj stan połączenia
                 observeConnectionState()
             }
         } else {
-            // Tab nie wymaga streamu - zatrzymaj serwis i zniszcz WebView
             streamService?.stop()
             streamService = null
             resetObservation()
@@ -122,48 +90,30 @@ object HttpStreamRepository {
             Log.d("ControllerActivity", "Actual tab: ${tab.name}")
         }
     }
-    
-    /**
-     * Zwraca aktualny aktywny tab.
-     */
+
     fun getActiveTab(): ControllerTab = currentActiveTab
-    
-    /**
-     * Rejestruje WebView - wywoływane gdy WebView jest tworzony.
-     */
+
     fun registerWebView(webView: WebView?, config: HttpStreamConfig?) {
         activeWebViewRef = webView?.let { WeakReference(it) }
         activeConfig = config
     }
-    
-    /**
-     * Rejestruje request do streamu.
-     */
+
     fun registerRequest() {
         requestCount++
         lastRequestTime = System.currentTimeMillis()
     }
-    
-    /**
-     * Sprawdza czy stream jest aktywny - FAKTYCZNIE działa (WebView istnieje + były requesty w ostatnich 2s).
-     */
+
     fun isStreamActive(): Boolean {
         val hasWebView = activeWebView != null
         val hasRecentRequests = (System.currentTimeMillis() - lastRequestTime) < 2000
         val isStreamTab = currentActiveTab == ControllerTab.SONAR || currentActiveTab == ControllerTab.CAMERA
         return isStreamTab && hasWebView && hasRecentRequests
     }
-    
-    /**
-     * Zwraca nazwę aktywnego streamu (dla logowania).
-     */
+
     fun getActiveStreamName(): String? {
         return activeConfig?.name
     }
-    
-    /**
-     * Niszczy WebView - wywoływane gdy tab traci widoczność.
-     */
+
     fun destroyWebView() {
         val webView = activeWebView
         // Ustaw null natychmiast, aby uniknąć wielokrotnych wywołań
@@ -318,17 +268,14 @@ object HttpStreamRepository {
         val webView = activeWebView ?: return null
         
         return try {
-            // Sprawdź czy WebView ma rozmiar
             if (webView.width <= 0 || webView.height <= 0) {
                 Log.w("HttpStreamRepository", "WebView has invalid size: ${webView.width}x${webView.height}")
                 return null
             }
-            
-            // Utwórz bitmapę o rozmiarze WebView
-            val bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
+
+            val bitmap = createBitmap(webView.width, webView.height)
             val canvas = Canvas(bitmap)
-            
-            // Narysuj zawartość WebView na canvas
+
             webView.draw(canvas)
             
             Log.d("HttpStreamRepository", "✅ Captured bitmap: ${bitmap.width}x${bitmap.height}")

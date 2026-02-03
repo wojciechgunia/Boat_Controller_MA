@@ -18,9 +18,6 @@ data class HttpStreamConfig(
     val path: String? = null,
     val baseIp: String = "100.103.230.44"
 ) {
-    /**
-     * Zwraca pełny URL streamu.
-     */
     fun getUrl(): String {
         return if (path != null) {
             "http://$baseIp:$port$path"
@@ -32,7 +29,6 @@ data class HttpStreamConfig(
 
 /**
  * Centralna konfiguracja wszystkich HTTP streamów.
- * Tutaj dodajesz nowe streamy - wystarczy dodać nową konfigurację.
  */
 object HttpStreamConfigs {
     // Podstawowy adres IP dla wszystkich streamów
@@ -74,8 +70,5 @@ object HttpStreamConfigs {
     //     path = "/api/data", // opcjonalnie
     //     baseIp = BASE_IP
     // )
-    
-    // Funkcja getAll() została usunięta jako nieużywana.
-    // Jeśli będzie potrzebna w przyszłości, można ją przywrócić.
 }
 

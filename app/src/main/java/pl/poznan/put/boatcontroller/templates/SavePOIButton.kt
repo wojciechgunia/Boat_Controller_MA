@@ -8,9 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
 import androidx.compose.ui.unit.dp
 import pl.poznan.put.boatcontroller.ConnectionState
 import pl.poznan.put.boatcontroller.ControllerViewModel
@@ -23,7 +23,6 @@ import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
  * Przycisk do zapisu POI z obrazem z kamery lub sonaru.
  * 
  * @param viewModel ViewModel zawierający logikę zapisu POI
- * @param sourceType Typ źródła ("camera" lub "sonar")
  * @param connectionState Aktualny stan połączenia HTTP stream
  * @param modifier Modifier do zastosowania
  * @param name Opcjonalna nazwa POI
@@ -32,7 +31,6 @@ import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupType
 @Composable
 fun SavePOIButton(
     viewModel: ControllerViewModel,
-    sourceType: String,
     connectionState: ConnectionState,
     modifier: Modifier = Modifier,
     name: String? = null,
@@ -56,7 +54,6 @@ fun SavePOIButton(
                 // Wywołaj funkcję zapisu POI z obrazem
                 viewModel.createPoiWithImage(
                     bitmap = bitmap,
-                    sourceType = sourceType,
                     name = name,
                     description = description
                 )
@@ -72,7 +69,7 @@ fun SavePOIButton(
         modifier = modifier
             .shadow(16.dp, CircleShape, clip = false)
             .clip(CircleShape),
-        containerColor = PrimaryBlue
+        containerColor = MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
     ) {
         Icon(
             painter = painterResource(id = R.drawable.save),

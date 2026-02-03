@@ -35,40 +35,31 @@ class HttpStreamService(
         isRunning = true
         
         CoroutineScope(Dispatchers.IO).launch {
-            // Inicjalizuj stan jako Reconnecting
             connectionState.emit(ConnectionState.Reconnecting)
             errorMessage.emit(null)
             reconnectingAttempts = 0
-            
-            // Zapisz początkowy tab
+
             prevTab = getActiveTabCallback()
-            
-            // Małe opóźnienie przed pierwszą próbą - daje czas na reset stanów w UI
-            delay(100)
+
+            //TODO sprawdzic czy delay potrzebny
+//            delay(100)
             
             while (isRunning) {
-                // WAŻNE: Sprawdź czy tab się zmienił - jeśli tak, natychmiast rozłącz
                 val currentTab = getActiveTabCallback()
                 if (prevTab != null && currentTab != prevTab) {
-                    // Tab się zmienił - natychmiast rozłącz
                     connectionState.emit(ConnectionState.Disconnected)
                     errorMessage.emit("Tab has been changed")
                     reconnectingAttempts = 0
-                    delay(1000L) // Sprawdzaj co sekundę
+                    delay(1000L)
                     continue
                 }
-                
-                // Sprawdź czy tab jest aktywny - jeśli nie, zatrzymaj próby połączenia
+
                 if (currentTab != expectedTab) {
-                    // Tab nie jest aktywny - zatrzymaj próby połączenia
-                    delay(1000L) // Sprawdzaj co sekundę czy tab się nie zmienił
+                    delay(1000L)
                     continue
                 }
-                
-                // Aktualizuj prevTab jeśli tab jest aktywny
+
                 prevTab = currentTab
-                
-                // Sprawdź aktualny stan - reagujemy tylko na zmiany stanu
                 val currentState = connectionState.replayCache.lastOrNull() ?: ConnectionState.Reconnecting
                 
                 // Wykryj zmianę stanu z Connected na Reconnecting - zresetuj licznik prób
@@ -111,25 +102,19 @@ class HttpStreamService(
                             connectionSuccessful = true
                         }
                         response.close()
-                    } catch (_: Exception) {
-                        // Błąd połączenia - pozostaw w Reconnecting
-                    }
+                    } catch (_: Exception) { }
                     
                     if (!connectionSuccessful) {
-                        // Próba nie powiodła się - sprawdź czy to była ostatnia próba
                         if (reconnectingAttempts >= MAX_RECONNECTING_ATTEMPTS) {
-                            // Wykonano wszystkie próby - zmień na Disconnected
                             connectionState.emit(ConnectionState.Disconnected)
                             errorMessage.emit("Reconnection failed after $MAX_RECONNECTING_ATTEMPTS attemps")
                             reconnectingAttempts = 0
                         } else {
-                            // Czekaj przed następną próbą (interwał między próbami)
                             delay(2000L)
                         }
                     }
                 } else if (currentState == ConnectionState.Connected) {
                     // Jesteśmy połączeni - okresowo sprawdzaj dostępność serwera (co 5 sekund)
-                    // To pozwala wykryć utratę połączenia nawet gdy WebView nie wywołuje onReceivedError
                     val connectionPool = okhttp3.ConnectionPool(1, 1, java.util.concurrent.TimeUnit.SECONDS)
                     val client = okhttp3.OkHttpClient.Builder()
                         .connectTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
@@ -165,7 +150,6 @@ class HttpStreamService(
                     // Sprawdzaj dostępność co 5 sekund gdy jesteśmy połączeni
                     delay(5000L)
                 } else {
-                    // Jesteśmy w stanie Disconnected - nie sprawdzamy (czekamy na forceReconnect)
                     reconnectingAttempts = 0
                     delay(1000L)
                 }

@@ -18,9 +18,9 @@ object InfoPopupManager {
 
     private var hideJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private const val defaultShowTime = 3000L
+    private const val DEFAULT_SHOW_TIME = 3000L
 
-    fun show(message: String, type: InfoPopupType, duration: Long = defaultShowTime) {
+    fun show(message: String, type: InfoPopupType, duration: Long = DEFAULT_SHOW_TIME) {
         hideJob?.cancel()
         this.message = message
         this.type = type

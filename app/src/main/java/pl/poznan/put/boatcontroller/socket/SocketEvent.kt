@@ -13,19 +13,19 @@ sealed class SocketEvent {
 
     data class SensorInformation(
         // Akcelerometr (g) - precyzja do 2 miejsc po przecinku (*100)
-        val accelX: Int, // wartość * 100
+        val accelX: Int,
         val accelY: Int,
         val accelZ: Int,
         // Żyroskop (deg/s) - precyzja do 2 miejsc po przecinku (*100)
-        val gyroX: Int, // wartość * 100
+        val gyroX: Int,
         val gyroY: Int,
         val gyroZ: Int,
         // Magnetometr (µT) - precyzja do 2 miejsc po przecinku (*100)
-        val magX: Int, // wartość * 100
+        val magX: Int,
         val magY: Int,
         val magZ: Int,
-        // Kąty (deg) - jako Int (bez miejsc po przecinku dla łatwiejszego przesyłania)
-        val angleX: Int, // wartość jako Int (stopnie)
+        // Kąty (deg) - jako Int
+        val angleX: Int,
         val angleY: Int,
         val angleZ: Int,
         // Głębokość (m) - precyzja do 2 miejsc po przecinku (*100)

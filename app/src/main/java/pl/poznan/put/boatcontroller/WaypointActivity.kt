@@ -79,7 +79,6 @@ import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.FeatureCollection
 import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
-import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
 import pl.poznan.put.boatcontroller.ui.theme.DarkRed
 import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
 import pl.poznan.put.boatcontroller.ui.theme.VisibilityButtonColor
@@ -552,7 +551,7 @@ class WaypointActivity : ComponentActivity() {
                         .padding(16.dp)
                         .shadow(16.dp, CircleShape, clip = false)
                         .clip(CircleShape),
-                    containerColor = PrimaryBlue
+                    containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.current_location_tracker),

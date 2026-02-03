@@ -48,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,6 +57,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +66,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.core.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.ui.graphics.lerp
+import kotlin.math.sin
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -80,8 +86,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import pl.poznan.put.boatcontroller.ui.theme.PrimaryBlue
-import pl.poznan.put.boatcontroller.ui.theme.PrimaryLightBlue
 import pl.poznan.put.boatcontroller.ui.theme.SuccessGreen
 import pl.poznan.put.boatcontroller.ui.theme.ErrorRed
 import pl.poznan.put.boatcontroller.ui.theme.WarningYellow
@@ -140,7 +144,8 @@ import pl.poznan.put.boatcontroller.templates.RotatePhoneAnimation
 import pl.poznan.put.boatcontroller.templates.createWaypointBitmap
 import pl.poznan.put.boatcontroller.templates.info_popup.InfoPopupManager
 import pl.poznan.put.boatcontroller.ui.theme.BoatControllerTheme
-import androidx.compose.runtime.CompositionLocalProvider
+import pl.poznan.put.boatcontroller.socket.HttpStreamConfig
+import kotlin.math.PI
 import kotlin.math.min
 
 class ControllerActivity: ComponentActivity() {
@@ -435,7 +440,17 @@ class ControllerActivity: ComponentActivity() {
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        TabRow(selectedTabIndex = tabs.indexOf(viewModel.selectedTab)) {
+                        TabRow(
+                            selectedTabIndex = tabs.indexOf(viewModel.selectedTab),
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.secondary, // Jaśniejszy niebieski dla tekstu Tab'ów
+                            indicator = { tabPositions ->
+                                TabRowDefaults.SecondaryIndicator(
+                                    modifier = Modifier.tabIndicatorOffset(tabPositions[tabs.indexOf(viewModel.selectedTab)]),
+                                    color = MaterialTheme.colorScheme.secondary // Jaśniejszy niebieski dla wskaźnika
+                                )
+                            }
+                        ) {
                             tabs.forEach { tab ->
                                 Tab(
                                     selected = viewModel.selectedTab == tab,
@@ -445,7 +460,15 @@ class ControllerActivity: ComponentActivity() {
                                         // Informuj HttpStreamRepository o zmianie taba
                                         HttpStreamRepository.setActiveTab(tab)
                                     },
-                                    text = { Text(tab.displayName) }
+                                    text = { 
+                                        Text(
+                                            tab.displayName,
+                                            color = if (viewModel.selectedTab == tab) 
+                                                MaterialTheme.colorScheme.secondary 
+                                            else 
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        ) 
+                                    }
                                 )
                             }
                         }
@@ -897,7 +920,7 @@ class ControllerActivity: ComponentActivity() {
                         .padding(16.dp)
                         .shadow(16.dp, CircleShape, clip = false)
                         .clip(CircleShape),
-                    containerColor = PrimaryBlue
+                    containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.current_location_tracker),
@@ -951,36 +974,95 @@ class ControllerActivity: ComponentActivity() {
     }
 
 
+    /**
+     * Wspólny komponent dla tabów z HTTP stream (Sonar i Camera).
+     * Zarządza widocznością wskaźnika połączenia i obsługuje kliknięcia.
+     * 
+     * @param viewModel ViewModel z danymi połączenia
+     * @param tab Typ taba (SONAR lub CAMERA)
+     * @param sourceType Typ źródła dla SavePOIButton ("sonar" lub "camera")
+     * @param label Etykieta dla HttpStreamView
+     * @param config Konfiguracja streamu
+     * @param modifier Modifier dla głównego Box
+     */
     @Composable
-    fun SonarTab(viewModel: ControllerViewModel) {
-        Box(modifier = Modifier.fillMaxSize()) {
+    fun HttpStreamTabContent(
+        viewModel: ControllerViewModel,
+        tab: ControllerTab,
+        sourceType: String,
+        label: String,
+        config: HttpStreamConfig,
+        modifier: Modifier = Modifier
+    ) {
+        // Stan widoczności wskaźnika połączenia
+        var isIndicatorVisible by remember { mutableStateOf(false) }
+        var hideJob by remember { mutableStateOf<Job?>(null) }
+        val scope = rememberCoroutineScope()
+        
+        // Funkcja do pokazania wskaźnika na ~3 sekundy
+        fun showIndicator() {
+            // Anuluj poprzednie zadanie ukrycia jeśli istnieje
+            hideJob?.cancel()
+            
+            // Pokaż wskaźnik
+            isIndicatorVisible = true
+            
+            // Zaplanuj ukrycie po ~2 sekundach (animacja zanikania trwa 1.5s, więc łącznie ~3.5s)
+            hideJob = scope.launch {
+                delay(2000) // 2 sekundy widoczności
+                isIndicatorVisible = false // Animacja zanikania trwa 1.5s
+            }
+        }
+        
+        // Automatycznie pokaż wskaźnik przy wejściu do taba
+        LaunchedEffect(Unit) {
+            showIndicator()
+        }
+        
+        Box(modifier = modifier.fillMaxSize()) {
             HttpStreamView(
-                streamUrl = HttpStreamRepository.getUrlForTab(ControllerTab.SONAR),
+                streamUrl = HttpStreamRepository.getUrlForTab(tab),
                 connectionState = viewModel.httpConnectionState,
                 errorMessage = viewModel.httpErrorMessage,
-                label = "sonaru",
-                config = HttpStreamConfigs.SONAR
+                label = label,
+                config = config,
+                onTap = {
+                    // Callback wywoływany gdy użytkownik kliknie w WebView
+                    // (ale nie w interaktywne elementy jak przyciski)
+                    showIndicator()
+                }
             )
             
             // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
             ConnectionStatusIndicator(
                 connectionState = viewModel.httpConnectionState,
                 errorMessage = viewModel.httpErrorMessage,
+                isVisible = isIndicatorVisible,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
             )
 
-            // Przycisk zapisu POI z sonaru
+            // Przycisk zapisu POI
             SavePOIButton(
                 viewModel = viewModel,
-                sourceType = "sonar",
                 connectionState = viewModel.httpConnectionState,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(16.dp)
             )
         }
+    }
+
+    @Composable
+    fun SonarTab(viewModel: ControllerViewModel) {
+        HttpStreamTabContent(
+            viewModel = viewModel,
+            tab = ControllerTab.SONAR,
+            sourceType = "sonar",
+            label = "sonaru",
+            config = HttpStreamConfigs.SONAR
+        )
     }
 
     @Composable
@@ -1077,7 +1159,7 @@ class ControllerActivity: ComponentActivity() {
                 text = title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.secondary // Jaśniejszy niebieski dla tytułów sekcji
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1100,38 +1182,14 @@ class ControllerActivity: ComponentActivity() {
         
         Row(modifier = Modifier.fillMaxSize()) {
             // Widok kamery - 85% szerokości
-            Box(
-                modifier = Modifier
-                    .weight(0.85f)
-                    .fillMaxSize()
-            ) {
-                HttpStreamView(
-                    streamUrl = HttpStreamRepository.getUrlForTab(ControllerTab.CAMERA),
-                    connectionState = viewModel.httpConnectionState,
-                    errorMessage = viewModel.httpErrorMessage,
-                    label = "kamery",
-                    config = HttpStreamConfigs.CAMERA
-                )
-                
-                // Wizualna informacja o stanie połączenia - uspójniona z HttpStreamView
-                ConnectionStatusIndicator(
-                    connectionState = viewModel.httpConnectionState,
-                    errorMessage = viewModel.httpErrorMessage,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp)
-                )
-
-                // Przycisk zapisu POI z kamery
-                SavePOIButton(
-                    viewModel = viewModel,
-                    sourceType = "camera",
-                    connectionState = viewModel.httpConnectionState,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(16.dp)
-                )
-            }
+            HttpStreamTabContent(
+                viewModel = viewModel,
+                tab = ControllerTab.CAMERA,
+                sourceType = "camera",
+                label = "kamery",
+                config = HttpStreamConfigs.CAMERA,
+                modifier = Modifier.weight(0.85f)
+            )
             
             // Panel sterowania zwijarki - 15% szerokości, pionowy
             WinchControlSwitchVertical(
@@ -1326,44 +1384,103 @@ class ControllerActivity: ComponentActivity() {
      * 
      * @param connectionState Stan połączenia
      * @param errorMessage Komunikat błędu (opcjonalny)
+     * @param isVisible Stan widoczności wskaźnika
      * @param modifier Modifier
      */
     @Composable
     fun ConnectionStatusIndicator(
         connectionState: ConnectionState,
         errorMessage: String? = null,
+        isVisible: Boolean = true,
         modifier: Modifier = Modifier
     ) {
         // Uspójniony stan - ten sam co w HttpStreamView
-        val (color, text) = when (connectionState) {
+        val (baseColor, text) = when (connectionState) {
             ConnectionState.Connected -> SuccessGreen to "Connected"
             ConnectionState.Reconnecting -> WarningYellow to "Reconnecting..."
             ConnectionState.Disconnected -> ErrorRed to "Disconnected"
         }
         
-        Box(
-            modifier = modifier
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    RoundedCornerShape(8.dp)
+        // Animacja przezroczystości dla fade in/out
+        val alpha by animateFloatAsState(
+            targetValue = if (isVisible) 1f else 0f,
+            animationSpec = when {
+                isVisible -> tween(
+                    durationMillis = 200, // Krótka animacja pojawiania się
+                    easing = FastOutSlowInEasing
                 )
-                .padding(8.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                else -> tween(
+                    durationMillis = 1500, // Dłuższa animacja zanikania
+                    easing = FastOutSlowInEasing
+                )
+            },
+            label = "indicator_alpha"
+        )
+        
+        // Animacja pulsacji koloru kropki (sinusoidalna)
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        val pulseProgress by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = 2000, // Pełny cykl pulsacji: 2 sekundy
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "pulse_progress"
+        )
+        
+        // Oblicz pulsujący kolor używając sinusa
+        // Sinus od 0 do 2π daje wartości od -1 do 1, więc normalizujemy do 0-1
+        val pulseFactor = (sin(pulseProgress * 2f * PI.toFloat()) + 1f) / 2f // 0.0 do 1.0
+        
+        // Lerp między bazowym kolorem a jaśniejszym odcieniem
+        // Zwiększamy wahanie - użyjemy większego współczynnika (0.5 zamiast 0.3)
+        val lighterColor = Color(
+            red = (baseColor.red + (1f - baseColor.red) * 0.5f).coerceIn(0f, 1f),
+            green = (baseColor.green + (1f - baseColor.green) * 0.5f).coerceIn(0f, 1f),
+            blue = (baseColor.blue + (1f - baseColor.blue) * 0.5f).coerceIn(0f, 1f),
+            alpha = baseColor.alpha
+        )
+        // Dodatkowo ciemniejszy odcień dla większego kontrastu
+        val darkerColor = Color(
+            red = (baseColor.red * 0.7f).coerceIn(0f, 1f),
+            green = (baseColor.green * 0.7f).coerceIn(0f, 1f),
+            blue = (baseColor.blue * 0.7f).coerceIn(0f, 1f),
+            alpha = baseColor.alpha
+        )
+        // Pulsacja między ciemniejszym a jaśniejszym odcieniem
+        val pulseColor = lerp(darkerColor, lighterColor, pulseFactor)
+        
+        // Ukryj całkowicie gdy alpha = 0
+        if (alpha > 0f) {
+            Box(
+                modifier = modifier
+                    .alpha(alpha)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f * alpha), // Zastosuj alpha również do tła
+                        RoundedCornerShape(8.dp)
+                    )
+                    .padding(8.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .background(color, CircleShape)
-                )
-                Text(
-                    text = text,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Medium
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(pulseColor, CircleShape)
+                    )
+                    Text(
+                        text = text,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha), // Zastosuj alpha do tekstu
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
@@ -1433,9 +1550,9 @@ class ControllerActivity: ComponentActivity() {
             modifier = modifier.fillMaxHeight(),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (currentState == stateValue)
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.primary // Ujednolicone z MaterialTheme
                 else
-                    MaterialTheme.colorScheme.surface
+                    MaterialTheme.colorScheme.surfaceVariant // Ujednolicone z tłem panelu
             ),
             shape = shape,
             contentPadding = PaddingValues(vertical = 12.dp)
@@ -1450,18 +1567,18 @@ class ControllerActivity: ComponentActivity() {
                         contentDescription = text,
                         modifier = Modifier.size(24.dp),
                         tint = if (currentState == stateValue)
-                            MaterialTheme.colorScheme.onPrimary
+                            MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
                         else
-                            MaterialTheme.colorScheme.onSurface
+                            MaterialTheme.colorScheme.onSurfaceVariant // Ujednolicone z kolorem tekstu na surfaceVariant
                     )
                     is Painter -> Icon(
                         painter = icon,
                         contentDescription = text,
                         modifier = Modifier.size(24.dp),
                         tint = if (currentState == stateValue)
-                            MaterialTheme.colorScheme.onPrimary
+                            MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
                         else
-                            MaterialTheme.colorScheme.onSurface
+                            MaterialTheme.colorScheme.onSurfaceVariant // Ujednolicone z kolorem tekstu na surfaceVariant
                     )
                 }
 
@@ -1469,9 +1586,9 @@ class ControllerActivity: ComponentActivity() {
                     text = text,
                     fontSize = 12.sp,
                     color = if (currentState == stateValue)
-                        MaterialTheme.colorScheme.onPrimary
+                        MaterialTheme.colorScheme.onPrimary // Ujednolicone z MaterialTheme
                     else
-                        MaterialTheme.colorScheme.onSurface
+                        MaterialTheme.colorScheme.onSurfaceVariant // Ujednolicone z kolorem tekstu na surfaceVariant
                 )
             }
         }

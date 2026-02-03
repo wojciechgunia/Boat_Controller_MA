@@ -11,31 +11,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryLightBlue, // Jaśniejszy niebieski dla tekstu w TabRow i sensorach
-    background = DarkBackground,
-    surface = DarkSurface,
-    onPrimary = AppWhite,
-    onSecondary = AppWhite,
-    onTertiary = AppWhite,
-    onBackground = DarkOnSurface,
-    onSurface = DarkOnSurface
+    primary = PrimaryBlue, // Główny kolor aplikacji - używany dla wszystkich głównych przycisków
+    onPrimary = AppWhite, // Tekst/ikony na przyciskach primary
+    secondary = PrimaryLightBlue, // Jaśniejszy niebieski dla tekstu w Tab'ach i tytułów sekcji
+    background = DarkBackground, // Tło całej aplikacji
+    onBackground = DarkOnSurface, // Tekst na tle aplikacji
+    surface = DarkSurface, // Powierzchnie (karty, panele)
+    onSurface = DarkOnSurface, // Tekst na powierzchniach
+    surfaceVariant = DarkPlaceholder, // Wariant powierzchni (panele zwijarki, sekcje)
+    onSurfaceVariant = DarkOnSurface, // Tekst na surfaceVariant
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = PrimaryLightBlue, // Jaśniejszy niebieski dla tekstu w TabRow i sensorach
-    background = LightBackground,
-    surface = LightSurface,
-    onPrimary = AppWhite,
-    onSecondary = AppWhite,
-    onTertiary = AppWhite,
-    onBackground = LightOnSurface,
-    onSurface = LightOnSurface
+    primary = PrimaryBlue, // Główny kolor aplikacji - używany dla wszystkich głównych przycisków
+    onPrimary = AppWhite, // Tekst/ikony na przyciskach primary
+    secondary = PrimaryLightBlue, // Jaśniejszy niebieski dla tekstu w Tab'ach i tytułów sekcji
+    background = LightBackground, // Tło całej aplikacji
+    onBackground = LightOnSurface, // Tekst na tle aplikacji
+    surface = LightSurface, // Powierzchnie (karty, panele)
+    onSurface = LightOnSurface, // Tekst na powierzchniach
+    surfaceVariant = LightPlaceholder, // Wariant powierzchni (panele zwijarki, sekcje)
+    onSurfaceVariant = LightOnSurface, // Tekst na surfaceVariant
 )
 
 @Composable
 fun BoatControllerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Wyłączone aby używać naszych kolorów
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
