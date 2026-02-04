@@ -320,7 +320,25 @@ class ControllerViewModel(app: Application) : AndroidViewModel(app) {
     private fun nextSNum(): Int = seq.incrementAndGet()
 
     private fun convertSpeedToControllerFormat(speed: Int): Int {
-        return ((speed + 80) / 1.6).toInt().coerceIn(0, 100)
+        return when {
+            speed == 0 -> 50 // Stop (neutral) - zawsze dokładnie 50
+            speed < 0 -> {
+                // Reverse: -80..-1 -> 0..47
+                // speed = -1 -> 47 (min reverse), speed = -80 -> 0 (max reverse)
+                // Używamy liniowej interpolacji, ale zapewniamy że -1 zawsze da max 47
+                val fraction = speed.toDouble() / -80.0 // 0.0125 .. 1.0
+                // Odwrócona logika: im większa frakcja (bardziej na minus), tym mniejsza wartość wyjściowa (bliżej 0)
+                val mapped = (47.0 - (fraction * 47.0)).toInt().coerceIn(0, 47)
+                mapped
+            }
+            else -> {
+                // Forward: 1..80 -> 53..100
+                // speed = 1 -> 53 (min forward), speed = 80 -> 100 (max forward)
+                val fraction = speed.toDouble() / 80.0 // 0.0125 .. 1.0
+                val mapped = (53.0 + (fraction * 47.0)).toInt().coerceIn(53, 100)
+                mapped
+            }
+        }
     }
     
     /**
