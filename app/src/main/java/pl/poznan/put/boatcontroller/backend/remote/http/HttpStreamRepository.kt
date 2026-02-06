@@ -3,19 +3,28 @@ package pl.poznan.put.boatcontroller.backend.remote.http
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.PixelCopy
 import android.view.View
+import android.view.Window
 import android.webkit.WebView
 import androidx.core.graphics.createBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import pl.poznan.put.boatcontroller.domain.enums.ConnectionState
 import pl.poznan.put.boatcontroller.domain.enums.ControllerTab
 import java.lang.ref.WeakReference
+import kotlin.coroutines.resume
 
 /**
  * Repository do zarządzania połączeniami HTTP stream.
@@ -41,6 +50,9 @@ object HttpStreamRepository {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage = _errorMessage.asStateFlow()
+
+    private val _isSnapshotCapturing = MutableStateFlow(false)
+    val isSnapshotCapturing = _isSnapshotCapturing.asStateFlow()
 
     private var isObservingConnection = false
 
@@ -271,13 +283,17 @@ object HttpStreamRepository {
     }
 
     /**
-     * Przechwytuje bitmapę z aktywnego WebView.
-     * Używa bezpośredniego rysowania na Canvas (z wymuszeniem LAYER_TYPE_SOFTWARE),
-     * co pozwala na przechwycenie zawartości bez elementów nakładkowych interfejsu.
+     * Przechwytuje bitmapę z aktywnego WebView używając PixelCopy.
+     * Pozwala to na przechwycenie zawartości renderowanej sprzętowo (Canvas/WebGL),
+     * co nie jest możliwe przy użyciu zwykłego draw().
      *
-     * @return Bitmapa z WebView lub null jeśli WebView nie istnieje lub wystąpił błąd
+     * Funkcja jest suspendowana i ustawia flagę isSnapshotCapturing,
+     * co pozwala UI na ukrycie elementów nakładkowych przed wykonaniem zrzutu.
+     *
+     * @param window Okno aplikacji (potrzebne do PixelCopy)
+     * @return Bitmapa z WebView lub null jeśli wystąpił błąd
      */
-    fun captureWebViewBitmap(): Bitmap? {
+    suspend fun captureSnapshot(window: Window): Bitmap? {
         val webView = activeWebView ?: return null
 
         if (webView.width <= 0 || webView.height <= 0) {
@@ -285,32 +301,61 @@ object HttpStreamRepository {
             return null
         }
 
+        _isSnapshotCapturing.value = true
+        // Daj czas UI na ukrycie elementów (Compose potrzebuje klatki na przerysowanie)
+        delay(100)
+
         return try {
-            val bitmap = createBitmap(webView.width, webView.height)
-            val canvas = Canvas(bitmap)
+            suspendCancellableCoroutine { continuation ->
+                try {
+                    val bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
+                    val location = IntArray(2)
+                    webView.getLocationInWindow(location)
 
-            val originalLayerType = webView.layerType
+                    // Uwzględnij pozycję WebView w oknie
+                    val rect = Rect(
+                        location[0],
+                        location[1],
+                        location[0] + webView.width,
+                        location[1] + webView.height
+                    )
 
-            try {
-                webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-
-                val bg = webView.background
-                if (bg != null) {
-                    bg.draw(canvas)
-                } else {
-                    canvas.drawColor(Color.WHITE)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        PixelCopy.request(
+                            window,
+                            rect,
+                            bitmap,
+                            { result ->
+                                if (result == PixelCopy.SUCCESS) {
+                                    continuation.resume(bitmap)
+                                } else {
+                                    Log.e("HttpStreamRepository", "PixelCopy failed: $result")
+                                    continuation.resume(null)
+                                }
+                            },
+                            Handler(Looper.getMainLooper())
+                        )
+                    } else {
+                        // Fallback dla starszych Androidów (API < 26)
+                        Log.w("HttpStreamRepository", "PixelCopy not supported (API < 26), using fallback draw()")
+                        val canvas = Canvas(bitmap)
+                        val originalLayerType = webView.layerType
+                        try {
+                            // Próba wymuszenia software renderowania (może nie zadziałać dla Canvas/WebGL)
+                            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                            webView.draw(canvas)
+                        } finally {
+                            webView.setLayerType(originalLayerType, null)
+                        }
+                        continuation.resume(bitmap)
+                    }
+                } catch (e: Exception) {
+                    Log.e("HttpStreamRepository", "Error capturing snapshot", e)
+                    continuation.resume(null)
                 }
-
-                webView.draw(canvas)
-            } finally {
-                webView.setLayerType(originalLayerType, null)
             }
-
-            Log.d("HttpStreamRepository", "Captured bitmap using direct draw: ${bitmap.width}x${bitmap.height}")
-            bitmap
-        } catch (e: Exception) {
-            Log.e("HttpStreamRepository", "Error capturing bitmap from WebView", e)
-            null
+        } finally {
+            _isSnapshotCapturing.value = false
         }
     }
 }

@@ -340,13 +340,16 @@ class ControllerActivity: ComponentActivity() {
         val rightEnginePower by viewModel.rightEnginePower.collectAsState()
         val currentSpeed by viewModel.currentSpeed.collectAsState()
         val selectedTab by viewModel.selectedTab.collectAsState()
+        val isSnapshotCapturing by HttpStreamRepository.isSnapshotCapturing.collectAsState()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            InfoPopup(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 16.dp)
-            )
+            if (!isSnapshotCapturing) {
+                InfoPopup(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
+                )
+            }
             
             Row(modifier = Modifier
                 .fillMaxSize()
@@ -964,6 +967,7 @@ class ControllerActivity: ComponentActivity() {
         val scope = rememberCoroutineScope()
         val connectionState by viewModel.httpConnectionState.collectAsState()
         val errorMessage by viewModel.httpErrorMessage.collectAsState()
+        val isSnapshotCapturing by HttpStreamRepository.isSnapshotCapturing.collectAsState()
         
         fun showIndicator() {
             hideJob?.cancel()
@@ -993,7 +997,7 @@ class ControllerActivity: ComponentActivity() {
             ConnectionStatusIndicator(
                 connectionState = connectionState,
                 errorMessage = errorMessage,
-                isVisible = isIndicatorVisible,
+                isVisible = isIndicatorVisible && !isSnapshotCapturing,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
